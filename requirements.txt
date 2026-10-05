@@ -1,0 +1,4 @@
+colorama
+numpy
+opencv-python
+seaborn
