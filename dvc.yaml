@@ -1,0 +1,10 @@
+stages:
+  generate_dataset:
+    cmd: python src/data_generation/DataSetGeneration.py
+    deps:
+      - src/data_generation/
+      - data/raw/
+    params:
+      - data_generation 
+    outs:
+      - data/generated/

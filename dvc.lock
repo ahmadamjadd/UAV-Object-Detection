@@ -1,0 +1,51 @@
+schema: '2.0'
+stages:
+  generate_dataset:
+    cmd: python src/data_generation/DataSetGeneration.py
+    deps:
+    - path: data/raw/
+      hash: md5
+      md5: 4688666e17efce660fa3319f58b012b4.dir
+      size: 102028625
+      nfiles: 397
+    - path: src/data_generation/
+      hash: md5
+      md5: db52c3fb8b456a849bcbf103d6604915.dir
+      size: 892052
+      nfiles: 14
+    params:
+      params.yaml:
+        data_generation:
+          n: 100
+          size: 320
+          shape_scale:
+            s0: 0.2
+            s1: 0.6
+          noise: 50
+          blur:
+            b0: 0
+            b1: 4
+          brightness_diff: 100
+          contrast:
+            alpha0: 0.85
+            alpha1: 1.2
+          brightness:
+            beta0: -20
+            beta1: 20
+          saturation:
+            sat0: -10
+            sat1: 0
+          desaturate: 0
+          letter:
+            add_letter: 1
+            letter_prob: 0.5
+          shadow:
+            add_light_gradient: 0
+            blend_prob: 0.5
+            opacity: 0.2
+    outs:
+    - path: data/generated/
+      hash: md5
+      md5: bd63a9148d8f1472233d12796a042d9e.dir
+      size: 18241754
+      nfiles: 400
