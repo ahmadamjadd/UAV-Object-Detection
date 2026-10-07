@@ -8,3 +8,13 @@ stages:
       - data_generation 
     outs:
       - data/generated/
+
+  train_model:
+    cmd: python src/train.py
+    deps:
+      - src/train.py
+      - data/generated/
+    params:
+      - train
+    outs:
+      - runs/

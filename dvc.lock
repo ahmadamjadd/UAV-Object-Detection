@@ -10,9 +10,9 @@ stages:
       nfiles: 397
     - path: src/data_generation/
       hash: md5
-      md5: db52c3fb8b456a849bcbf103d6604915.dir
-      size: 892052
-      nfiles: 14
+      md5: 8a8f4a7a597cc9b7a846e3bfade60827.dir
+      size: 938611
+      nfiles: 15
     params:
       params.yaml:
         data_generation:
@@ -49,3 +49,26 @@ stages:
       md5: bd63a9148d8f1472233d12796a042d9e.dir
       size: 18241754
       nfiles: 400
+  train_model:
+    cmd: python src/train.py
+    deps:
+    - path: data/generated/
+      hash: md5
+      md5: 56ca9bb4f3a5f54cc36bf0957fd9c171.dir
+      size: 18281167
+      nfiles: 401
+    - path: src/train.py
+      hash: md5
+      md5: c44d4a1b6a6a2bc33548bf053cfdfded
+      size: 2264
+    params:
+      params.yaml:
+        train:
+          epochs: 3
+          batch_size: 16
+    outs:
+    - path: runs/
+      hash: md5
+      md5: 64404d0367605c22aa5998b4c8727cd9.dir
+      size: 21016160
+      nfiles: 21
