@@ -58,6 +58,27 @@ def main():
         project="runs",
         name="synthetic_train"
     )
+    
+    # 5. Log dataset generation parameters to the same MLflow run
+    import mlflow
+    
+    # Get the run that YOLO just created
+    run = mlflow.last_active_run()
+    if run:
+        data_params = params.get("data_generation", {})
+        # Flatten nested params so they show as e.g. "data/n", "data/noise"
+        flat_params = {}
+        for key, value in data_params.items():
+            if isinstance(value, dict):
+                for sub_key, sub_value in value.items():
+                    flat_params[f"data/{key}/{sub_key}"] = sub_value
+            else:
+                flat_params[f"data/{key}"] = value
+        
+        with mlflow.start_run(run_id=run.info.run_id):
+            mlflow.log_params(flat_params)
+        
+        print("Dataset parameters logged to MLflow.")
 
 if __name__ == "__main__":
     main()
