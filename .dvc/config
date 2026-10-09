@@ -1,2 +1,4 @@
+[core]
+    remote = origin
 ['remote "origin"']
     url = https://dagshub.com/muhammadahmadamjad0/UAV-Object-Detection.dvc

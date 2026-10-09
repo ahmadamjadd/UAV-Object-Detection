@@ -2,3 +2,7 @@ colorama
 numpy
 opencv-python
 seaborn
+ultralytics
+mlflow
+dvc
+pyyaml
