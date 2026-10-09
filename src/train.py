@@ -1,7 +1,11 @@
 import os
 import yaml
 import sys
+from dotenv import load_dotenv
 from ultralytics import YOLO
+
+# Load .env file (contains MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD)
+load_dotenv()
 
 # Add the data generation folder to path so we can import the SHAPES list
 project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
@@ -35,8 +39,19 @@ def main():
     
     # 2. Configure MLflow to securely log to DagsHub
     # YOLOv8 automatically detects these environment variables and logs EVERYTHING for you!
+    import mlflow
+    
     os.environ["MLFLOW_TRACKING_URI"] = "https://dagshub.com/muhammadahmadamjad0/UAV-Object-Detection.mlflow"
-    os.environ["MLFLOW_EXPERIMENT_NAME"] = "YOLO_Synthetic_Training"
+    
+    # Handle the case where experiment was soft-deleted on DagsHub
+    experiment_name = "YOLOv8_UAV_Detection"
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment and experiment.lifecycle_stage == "deleted":
+        # Restore the soft-deleted experiment so we can reuse the name
+        mlflow.tracking.MlflowClient().restore_experiment(experiment.experiment_id)
+        print(f"Restored soft-deleted experiment: {experiment_name}")
+    
+    os.environ["MLFLOW_EXPERIMENT_NAME"] = experiment_name
     
     # You MUST set these locally in your terminal or Colab before running the script:
     # export MLFLOW_TRACKING_USERNAME=muhammadahmadamjad0
@@ -60,7 +75,6 @@ def main():
     )
     
     # 5. Log dataset generation parameters to the same MLflow run
-    import mlflow
     
     # Get the run that YOLO just created
     run = mlflow.last_active_run()
