@@ -89,8 +89,10 @@ def main():
             else:
                 flat_params[f"data/{key}"] = value
         
-        with mlflow.start_run(run_id=run.info.run_id):
-            mlflow.log_params(flat_params)
+        # Use MlflowClient to log params without reopening the run
+        client = mlflow.tracking.MlflowClient()
+        for key, value in flat_params.items():
+            client.log_param(run.info.run_id, key, value)
         
         print("Dataset parameters logged to MLflow.")
 
