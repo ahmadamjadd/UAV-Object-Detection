@@ -16,12 +16,11 @@ def create_yolo_yaml(dataset_dir):
     """Creates the data.yaml file required by YOLOv8"""
     data_yaml_path = os.path.join(project_root, "data.yaml")
     
-    # For now, we will use the same images for train and val since we haven't split them yet.
-    # We map the classes directly from the SHAPES list used in the generator!
+    # Point train and val to the split subdirectories
     yolo_data = {
         "path": dataset_dir,
-        "train": "images",
-        "val": "images",
+        "train": "train/images",
+        "val": "val/images",
         "names": {i: shape for i, shape in enumerate(SHAPES)}
     }
     
@@ -58,7 +57,7 @@ def main():
     # export MLFLOW_TRACKING_PASSWORD=<YOUR_DAGSHUB_TOKEN>
     
     # 3. Create data.yaml
-    dataset_dir = os.path.join(project_root, "data", "generated")
+    dataset_dir = os.path.join(project_root, "data", "split")
     data_yaml_path = create_yolo_yaml(dataset_dir)
     
     # 4. Train the YOLOv8 model!
@@ -88,6 +87,11 @@ def main():
                     flat_params[f"data/{key}/{sub_key}"] = sub_value
             else:
                 flat_params[f"data/{key}"] = value
+        
+        # Also log split ratios
+        split_params = params.get("split", {})
+        for key, value in split_params.items():
+            flat_params[f"split/{key}"] = value
         
         # Use MlflowClient to log params without reopening the run
         client = mlflow.tracking.MlflowClient()

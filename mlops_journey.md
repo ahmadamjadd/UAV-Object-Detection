@@ -74,3 +74,16 @@ Explored the repository to understand how the synthetic dataset is generated.
 - Wrote `src/train.py`, which dynamically generates YOLO's `data.yaml` based on the classes used in `DataSetGeneration.py`.
 - Linked `src/train.py` to DagsHub's MLflow server using environment variables (`MLFLOW_TRACKING_URI`, `MLFLOW_TRACKING_USERNAME`, `MLFLOW_TRACKING_PASSWORD`).
 - Added a `train_model` stage to `dvc.yaml` and a `train` parameter block to `params.yaml`, ensuring that the training stage is tracked by DVC just like the dataset generation stage.
+
+## Step 7B: Dataset Splitting & Real-World Testing
+**Status**: Completed
+
+**What we did**:
+- **Problem identified**: `train.py` was pointing both `train` and `val` to the same `data/generated/images/` folder, meaning the model was validating on its own training data and all reported validation metrics (mAP50, precision, recall) were meaningless.
+- **Created `src/split_dataset.py`**: A new script that reads split ratios from `params.yaml` (`split.train: 0.80`, `split.val: 0.20`), deterministically shuffles the generated images (seeded with `np.random.seed(42)`), and copies them into `data/split/train/` and `data/split/val/` with separate `images/` and `labels/` subdirectories. The original `data/generated/` stays intact.
+- **Added `split` section to `params.yaml`**: Defines train/val ratios so DVC tracks when they change.
+- **Updated `src/train.py`**: Changed `create_yolo_yaml()` to point YOLO at `data/split/` with separate `train: train/images` and `val: val/images` paths, so validation metrics now reflect performance on unseen data.
+- **Created `src/test.py`**: A script that checks for real flight images in `data/test_real/images/`. If images are present, it loads the best trained model from `runs/`, runs inference, and saves annotated predictions to `data/test_real/predictions/`. If no test images are found, it prints a skip message and exits cleanly (creating the empty predictions directory so DVC does not error on missing outputs).
+- **Created `data/test_real/images/`**: An empty directory (with `.gitkeep`) where team members can manually drop real flight photos for testing.
+- **Updated `dvc.yaml`**: Added `split_dataset` stage (between `generate_dataset` and `train_model`) and `test_model` stage (after `train_model`). The full pipeline is now: `generate_dataset --> split_dataset --> train_model --> test_model`.
+- **Bug fix**: The `test_model` stage in `dvc.yaml` originally declared `data/test_real/predictions/` as an output. When no test images exist, the script skips inference and never creates that directory, causing DVC to fail with an "output does not exist" error. Fixed by removing the `outs` declaration from the `test_model` stage entirely -- predictions only exist when there are actual test images to run on, so DVC shouldn't track a directory that may or may not exist.

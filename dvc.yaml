@@ -9,12 +9,29 @@ stages:
     outs:
       - data/generated/
 
+  split_dataset:
+    cmd: python src/split_dataset.py
+    deps:
+      - src/split_dataset.py
+      - data/generated/
+    params:
+      - split
+    outs:
+      - data/split/
+
   train_model:
     cmd: python src/train.py
     deps:
       - src/train.py
-      - data/generated/
+      - data/split/
     params:
       - train
     outs:
       - runs/
+
+  test_model:
+    cmd: python src/test.py
+    deps:
+      - src/test.py
+      - runs/
+    always_changed: true

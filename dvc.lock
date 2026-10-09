@@ -49,26 +49,49 @@ stages:
       md5: bd63a9148d8f1472233d12796a042d9e.dir
       size: 18241754
       nfiles: 400
-  train_model:
-    cmd: python src/train.py
+  split_dataset:
+    cmd: python src/split_dataset.py
     deps:
     - path: data/generated/
       hash: md5
       md5: bd63a9148d8f1472233d12796a042d9e.dir
       size: 18241754
       nfiles: 400
+    - path: src/split_dataset.py
+      hash: md5
+      md5: 5f757b530b289b2aefc83ea1b8434611
+      size: 2568
+    params:
+      params.yaml:
+        split:
+          train: 0.8
+          val: 0.2
+    outs:
+    - path: data/split/
+      hash: md5
+      md5: 3164ad9e87047117ba7c7f4f68d03a33.dir
+      size: 18241754
+      nfiles: 400
+  train_model:
+    cmd: python src/train.py
+    deps:
+    - path: data/split/
+      hash: md5
+      md5: 3164ad9e87047117ba7c7f4f68d03a33.dir
+      size: 18241754
+      nfiles: 400
     - path: src/train.py
       hash: md5
-      md5: e153d48ffc51800a3f3f23bc8afa5c49
-      size: 3774
+      md5: c9d700dfdbf68d52b8ecd933c783894e
+      size: 3846
     params:
       params.yaml:
         train:
           epochs: 3
-          batch_size: 32
+          batch_size: 16
     outs:
     - path: runs/
       hash: md5
-      md5: aaba57dbad3fc4e0a90e707205d1ad42.dir
-      size: 21211336
-      nfiles: 21
+      md5: 57fa675058c37466c43a4df0a083f559.dir
+      size: 18712676
+      nfiles: 19

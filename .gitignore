@@ -1,5 +1,8 @@
 venv/
 data/
+!data/test_real/
+!data/test_real/images/
+!data/test_real/images/.gitkeep
 __pycache__/
 /runs
 .env

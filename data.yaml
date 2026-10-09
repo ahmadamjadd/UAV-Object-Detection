@@ -1,6 +1,6 @@
 names:
   0: Hexagon
   1: Triangle
-path: /home/muhammad_ahmad/Documents/Foxtrot/MlOps/data/generated
-train: images
-val: images
+path: /home/muhammad_ahmad/Documents/Foxtrot/MlOps/data/split
+train: train/images
+val: val/images

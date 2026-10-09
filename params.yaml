@@ -29,4 +29,8 @@ data_generation:
 
 train:
   epochs: 3
-  batch_size: 32
+  batch_size: 16
+
+split:
+  train: 0.80
+  val: 0.20
