@@ -17,6 +17,13 @@ import resize_backgrounds as rb
 import generate_letters as genl
 import math
 import pdb
+import sys
+
+# Support the existing direct script entry point as well as shared class metadata.
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from class_names import SHAPES
+from backgrounds import discover_backgrounds, read_background
+from image_size import validate_image_size, resize_background
 
 DEBUG = False 
 SIZE = 320
@@ -61,14 +68,6 @@ KERNEL_CACHE = {
 
 colorama.init()
 
-
-SHAPES = ['Quartercircle','Semicircle','Cross','Star','Triangle','Octagon','Heptagon','Hexagon','Square',
-          'Pentagon','Circle','Rectangle','Trapezoid']
-
-SHAPES = ['Quartercircle','Semicircle','Cross','Star','Triangle', 
-          'Pentagon','Circle','Rectangle']
-
-SHAPES = ['Hexagon', 'Triangle']
 
 LETTER_CLASS = {char: idx for idx, char in enumerate([str(i) for i in range(10)] + [chr(i) for i in range(ord('A'), ord('Z') + 1)])}
 
@@ -139,7 +138,9 @@ def add_noise(image, noise_factor):
     image = cv2.convertScaleAbs(image, alpha=alpha, beta= beta)
     return image
 
-def saturate(image, saturation = random.randint(SATURATION[0], SATURATION[1])): 
+def saturate(image, saturation=None):
+    if saturation is None:
+        saturation = random.randint(SATURATION[0], SATURATION[1])
     image = cv2.cvtColor(image, cv2.COLOR_BGR2HLS_FULL)
     image[:, :, 2] = np.clip(0 if DESATURATE else (image[:, :, 2] + saturation), 0, 255)
     # print(saturation)
@@ -182,7 +183,7 @@ def apply_difference(attrib_a, attrib_b, attrib_diff):
     return (new_low, new_high) if attrib_a == low else (new_high, new_low)
 
 def draw_shape(image, shape, letter, s_scale, l_scale, translation, s_rot_angle, l_rot_angle, s_color, l_color, l_dice, s_border, add_letter = True):
-    dimension = [int(image.shape[0] * s_scale), int(image.shape[1] * s_scale)]
+    dimension = [int(image.shape[1] * s_scale), int(image.shape[0] * s_scale)]
     try:  
         if shape == "Rectangle":
             # s_scale *= 0.4
@@ -264,7 +265,7 @@ def draw_shape(image, shape, letter, s_scale, l_scale, translation, s_rot_angle,
 
 
 def calculate_poly_dimension(size , shape, s_scale, rot_angle):
-    dimension = [int(size[0] * s_scale), int(size[1] * s_scale)]
+    dimension = [int(size[1] * s_scale), int(size[0] * s_scale)]
     
     if shape == "Rectangle":
         vertices , offset = sh.Rectangle(s_scale)
@@ -310,7 +311,7 @@ def load_params():
         params = yaml.safe_load(f)["data_generation"]
         
     N = params.get("n", N)
-    SIZE = params.get("size", SIZE)
+    SIZE = validate_image_size(params.get("size", SIZE))
     L_SIZE = int(0.4 * SIZE)
     if "shape_scale" in params:
         SHAPE_SCALE = [params["shape_scale"].get("s0", SHAPE_SCALE[0]), params["shape_scale"].get("s1", SHAPE_SCALE[1])]
@@ -340,6 +341,9 @@ def load_params():
         max(1, i): cv2.getGaussianKernel(max(1, i), 0) for i in range(BLUR_FACTOR[0], BLUR_FACTOR[1] + 1)
     }
 
+    # Validate all backgrounds before replacing any existing generated dataset.
+    discover_backgrounds(Background)
+
     # Cleanup and create output dirs
     for d in [Output, Bounds, Labels, LetterOutput, LetterBounds, LetterLabels]:
         if os.path.exists(d):
@@ -350,7 +354,15 @@ def load_params():
         os.makedirs(os.path.join(LetterOutput, letter), exist_ok=True)
 
     Letters = os.path.join(curdir, 'res', 'letters{}'.format(SIZE))
-    if f'letters{SIZE}' not in os.listdir(os.path.join(curdir, 'res')):  
+    # An existing folder can be empty, partial or have assets of another size.
+    letter_cache_valid = True
+    for letter in LETTER_CLASS:
+        path = os.path.join(Letters, f'{letter}.png')
+        resource = cv2.imread(path) if os.path.isfile(path) else None
+        if resource is None or resource.shape[:2] != (SIZE, SIZE):
+            letter_cache_valid = False
+            break
+    if not letter_cache_valid:
         genl.generate_letters(SIZE, SIZE, Letters)
 
 def parse_terminal():
@@ -491,6 +503,8 @@ def parse_terminal():
         pdb.set_trace()
 
 def main():
+    validate_image_size(SIZE)
+    backgrounds = discover_backgrounds(Background)
     total = N * (len(SHAPES) if not ONLY_LETTER else len(LETTER_CLASS))
     f = int(0.01 * total if ONLY_LETTER else 0.1 * N) if FREQ == 0 else FREQ
     f = max(1, f)
@@ -528,9 +542,7 @@ def main():
             i = 0
             images_generated = 0
             while images_generated < N and i < max_attempts:
-                background = random.choice(os.listdir(Background))
-                while background.split(".")[-1] != "png" and background.split(".")[-1] != "jpg":
-                    background = random.choice(os.listdir(Background))
+                background = random.choice(backgrounds)
                 
                 letter = str(l_shape if ONLY_LETTER else list(LETTER_CLASS.keys())[rand_letters[i]])
                 shape = str(l_shape if not ONLY_LETTER else SHAPES[rand_shapes[i]])
@@ -540,7 +552,7 @@ def main():
                 # letter = data if ONLY_LETTER else random.choice(list(LETTER_CLASS.keys()))
                 # shape = data if not ONLY_LETTER else random.choice(SHAPES) 
 
-                image = cv2.imread(os.path.join(Background, background))
+                image = resize_background(read_background(background), SIZE)
 
                 # s_color = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)] 
                 # l_color = [random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)]
@@ -563,47 +575,25 @@ def main():
                 s_rot_angle = rand_rotation[i][0]
                 l_rot_angle = (- s_rot_angle + L_ANGLE_OFFSET[shape]) if random.uniform(0, 1) <= L_ABS_ROT_PROB else rand_rotation[i][1] 
 
-                translation = []
-                if shape in ['Semicircle', 'Quartercircle']: 
-                    
-                    radius = (image.shape[0] * s_scale/ 2, image.shape[1] * s_scale/ 2)
-                    angle_range = [s_rot_angle, s_rot_angle + 180]
-
-                    if shape == 'Quartercircle': angle_range[1] -= 90
-                    data, _= sh.circle_data(radius, radius, angle_range)
-
-                    # translation = [
-                    #     min(random.uniform(0, image.shape[0]), image.shape[0] - data['w']/2 - data['x'] ),
-                    #     min(random.uniform(0, image.shape[1]), image.shape[1] - data['h']/2 - data['y']),
-                    # ]
-                    translation = [
-                        random.uniform(- data['x'] + data['w']/2, image.shape[0] - data['w']/2 - data['x'] ),
-                        random.uniform(- data['y'] + data['h']/2, image.shape[1] - data['h']/2 - data['y'])
-                    ]
-
-                elif shape != 'Circle': 
-
-                    dimension = calculate_poly_dimension(image.shape, shape, s_scale, s_rot_angle) 
-                    
-                    # translation = [
-                    #     min(random.uniform(0, image.shape[0]), image.shape[0] - dimension[0]),
-                    #     min(random.uniform(0, image.shape[1]), image.shape[1] - dimension[1]),
-                    # ]
-                    translation = [
-                        random.uniform(0, image.shape[0] - dimension[0]),
-                        random.uniform(0, image.shape[1] - dimension[1])
-                    ]
-
-                else: 
-                    dimension = [image.shape[0]* s_scale, image.shape[1]*s_scale] 
-                    # translation = [
-                    #     min(random.uniform(0, image.shape[0]), image.shape[0] - dimension[0]),
-                    #     min(random.uniform(0, image.shape[1]), image.shape[1] - dimension[1]),
-                    # ]
-                    translation = [
-                        random.uniform(0, image.shape[0] - dimension[0]),
-                        random.uniform(0, image.shape[1] - dimension[1])
-                    ]
+                height, width = image.shape[:2]
+                margin = math.ceil(int(rand_border[i]) / 2) + 1
+                if shape in ['Circle', 'Semicircle', 'Quartercircle']:
+                    radius = max(1, int(min(height, width) * s_scale / 2))
+                    sweep = {'Circle': 360, 'Semicircle': 180, 'Quartercircle': 90}[shape]
+                    start_angle = 0 if shape == 'Circle' else s_rot_angle
+                    bounds, _ = sh.circle_data((radius, radius), (radius, radius),
+                                              [start_angle, start_angle + sweep])
+                    low = [bounds['x'] - bounds['w'] / 2, bounds['y'] - bounds['h'] / 2]
+                    high = [bounds['x'] + bounds['w'] / 2, bounds['y'] + bounds['h'] / 2]
+                else:
+                    dimension = calculate_poly_dimension(image.shape, shape, s_scale, s_rot_angle)
+                    low, high = [0, 0], dimension
+                ranges = [(margin - low[0], width - 1 - margin - high[0]),
+                          (margin - low[1], height - 1 - margin - high[1])]
+                if any(upper < lower for lower, upper in ranges):
+                    i += 1
+                    continue
+                translation = [random.uniform(lower, upper) for lower, upper in ranges]
 
                 s_border = rand_border[i] if BORDER[1] > BORDER[0] else 0
                 l_dice = random.uniform(0, 1) 
@@ -642,7 +632,7 @@ def main():
                     #                         color_temp_image[0][0][0], color_temp_image[0][0][1], color_temp_image[0][0][2]))
 
                     label.write('{} {} {} {} {}'\
-                                .format(shape_idx, data['x']/image.shape[0], data['y']/image.shape[1], data['w']/image.shape[0], data['h']/image.shape[1]))
+                                .format(shape_idx, data['x']/image.shape[1], data['y']/image.shape[0], data['w']/image.shape[1], data['h']/image.shape[0]))
 
                     # label.write('{} {} {}'.format(s_color[0], s_color[1], s_color[2]))
                     # label.writelines(toWrite)
@@ -656,10 +646,10 @@ def main():
 
                 lighted_image = None
                 if random.uniform(0, 1) < LIGHT_PROB and ADD_LIGHT_GRADIENT: 
-                    light = os.path.join(Light, random.choice(os.listdir(Light)))
+                    light = os.path.join(Light, random.choice(sorted(os.listdir(Light))))
                     image = sh.apply_lighting_blend(image, light , random.randint(0, 360), random.uniform(OPACITY[0], OPACITY[1]), BLEND_MODE)
 
-                # light = os.path.join(Light, random.choice(os.listdir(Light)))
+                # light = os.path.join(Light, random.choice(sorted(os.listdir(Light))))
                 # lighted_image = sh.apply_lighting_blend(image, light , random.randint(0, 360), OPACITY[1])
 
                 if not ONLY_LETTER: 
@@ -693,8 +683,8 @@ def main():
                             data["y"] - (size)/2 if data["y"] - size/2 < 0 else 0, 
                         ], 
                         'max' : [
-                            data["x"] + size/2 - SIZE if data["x"] + size/2 > SIZE else 0, 
-                            data["y"] + size/2 - SIZE if data["y"] + size/2 > SIZE else 0, 
+                            data["x"] + size/2 - image.shape[1] if data["x"] + size/2 > image.shape[1] else 0,
+                            data["y"] + size/2 - image.shape[0] if data["y"] + size/2 > image.shape[0] else 0,
                         ]
                     }
 
@@ -713,10 +703,10 @@ def main():
                     cv2.imwrite(os.path.join(LetterOutput, letter, str(cnt if ONLY_LETTER else l_cnt) + ".jpg"), letter_image)
 
                     modified_letter_data = {
-                        "x": math.ceil((letter_data['x']-shapes_bounds[0][0]) * letter_image.shape[0] / original_size[0]), 
-                        "y": math.ceil((letter_data['y']-shapes_bounds[0][1]) * letter_image.shape[1] / original_size[1]), 
-                        "w": math.ceil((letter_data['w']) * letter_image.shape[0] / original_size[0]), 
-                        "h": math.ceil((letter_data['h']) * letter_image.shape[1] / original_size[1]), 
+                        "x": math.ceil((letter_data['x']-shapes_bounds[0][0]) * letter_image.shape[1] / original_size[1]),
+                        "y": math.ceil((letter_data['y']-shapes_bounds[0][1]) * letter_image.shape[0] / original_size[0]),
+                        "w": math.ceil((letter_data['w']) * letter_image.shape[1] / original_size[1]),
+                        "h": math.ceil((letter_data['h']) * letter_image.shape[0] / original_size[0]),
                     }
 
                     with open(os.path.join(LetterLabels, str(cnt) + '.txt'), "w") as label: 
@@ -755,6 +745,9 @@ def main():
                             cv2.destroyAllWindows()
                             return 
                         
+            if images_generated != N:
+                raise RuntimeError(f"Generated only {images_generated}/{N} images for {l_shape} "
+                                   f"after {max_attempts} attempts; check shape scale, image dimensions and letters")
             shape_idx += 1
     except KeyboardInterrupt:  
         print("Exiting....")        

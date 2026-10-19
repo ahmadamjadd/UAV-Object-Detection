@@ -1,16 +1,15 @@
 import os
 import yaml
-import sys
 from dotenv import load_dotenv
 from ultralytics import YOLO
 
-# Load .env file (contains MLFLOW_TRACKING_USERNAME and MLFLOW_TRACKING_PASSWORD)
-load_dotenv()
+# Support both `python src/train.py` and `python -m src.train`.
+if __package__:
+    from .class_names import CLASS_NAMES, SHAPES
+else:
+    from class_names import CLASS_NAMES, SHAPES
 
-# Add the data generation folder to path so we can import the SHAPES list
 project_root = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-sys.path.append(os.path.join(project_root, "src", "data_generation"))
-from DataSetGeneration import SHAPES
 
 def create_yolo_yaml(dataset_dir):
     """Creates the data.yaml file required by YOLOv8"""
@@ -21,7 +20,7 @@ def create_yolo_yaml(dataset_dir):
         "path": dataset_dir,
         "train": "train/images",
         "val": "val/images",
-        "names": {i: shape for i, shape in enumerate(SHAPES)}
+        "names": dict(CLASS_NAMES)
     }
     
     with open(data_yaml_path, "w") as f:
@@ -30,6 +29,9 @@ def create_yolo_yaml(dataset_dir):
     return data_yaml_path
 
 def main():
+    # Read credentials only when training is explicitly started.
+    load_dotenv()
+
     # 1. Load hyper-parameters
     with open(os.path.join(project_root, "params.yaml"), "r") as f:
         params = yaml.safe_load(f)

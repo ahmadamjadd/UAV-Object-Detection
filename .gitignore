@@ -1,4 +1,10 @@
 venv/
+.venv/
+*.egg-info/
+/build/
+/dist/
+node_modules/
+/frontend/dist/
 data/
 !data/test_real/
 !data/test_real/images/
@@ -6,3 +12,5 @@ data/
 __pycache__/
 /runs
 .env
+/data.yaml
+/src/data_generation/res/letters[0-9]*/

@@ -5,8 +5,9 @@ import numpy as np
 from functools import lru_cache
 Letter_Mask = {}
     
-def initialize_letter_masks(letter_dir):  
-    for l_name in os.listdir(letter_dir):
+def initialize_letter_masks(letter_dir):
+    Letter_Mask.clear()
+    for l_name in sorted(os.listdir(letter_dir)):
         letter = cv2.imread(os.path.join(letter_dir, l_name))
         # hsv_image = cv2.cvtColor(letter, cv2.COLOR_BGR2HSV)
         Letter_Mask[l_name[0]] =  cv2.inRange(letter, np.array([0, 0, 0]), np.array([0, 0, 0]))
@@ -91,44 +92,26 @@ def blend_shapes(shaped_image, background, color, vertices, alpha = 0.5):
     
 
 
-def add_letter(background , letter_name, color = (0, 0, 255), scale = 1, translation = [0, 0], rotation = 0, test = False):
-
-    
+def add_letter(background, letter_name, color=(0, 0, 255), scale=1,
+               translation=(0, 0), rotation=0, test=False):
     mask = Letter_Mask[letter_name]
- 
     rows, cols = mask.shape
-    M_rotation = cv2.getRotationMatrix2D((cols/ 2, rows / 2), rotation, 1)
-    mask = cv2.warpAffine(mask, M_rotation, (cols, rows), flags= cv2.INTER_NEAREST)
-    scale *= 1.2 * (background.shape[0]/mask.shape[0])
-    mask = cv2.resize(mask, (0, 0), fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
-
-    
-    translation = np.array([translation[0] - background.shape[0] * scale / 2 , translation[1] - background.shape[1] * scale / 2], np.int32)
-    y1, y2 = translation[1], translation[1] + mask.shape[1] 
-    x1, x2 = translation[0], translation[0] + mask.shape[0] 
-
-    y1 = max(0, y1)
-    y2 = min(background.shape[1], y2)
-    x1 = max(0, x1)
-    x2 = min(background.shape[0], x2)
-
-    white_pixels = np.where(mask == 255)
-
-    mask =  mask[0:y2 - y1, 0:x2 - x1] 
-    background[y1:y2, x1:x2][white_pixels] = color
-    # print(np.min(white_pixels[0]))
-    
-    min_values = [np.min(white_pixels[i]) for i in range(1, -1, -1)]
-    max_values = [np.max(white_pixels[i]) for i in range(1, -1, -1)]
-    dimension = [ max_values[i] - min_values[i] for i in range(2)]
-
-    data = {
-        "x": min_values[0] + dimension[0]/2 + translation[0], 
-        "y": min_values[1] + dimension[1]/2 + translation[1], 
-        "w": dimension[0], 
-        "h": dimension[1]
-    } 
-    return background, data 
+    matrix = cv2.getRotationMatrix2D((cols / 2, rows / 2), rotation, 1)
+    mask = cv2.warpAffine(mask, matrix, (cols, rows), flags=cv2.INTER_NEAREST)
+    target = max(1, int(round(1.2 * min(background.shape[:2]) * scale)))
+    mask = cv2.resize(mask, (target, target), interpolation=cv2.INTER_NEAREST)
+    points = cv2.findNonZero(mask)
+    if points is None:
+        raise ValueError("Letter mask contains no visible pixels")
+    left, top, width, height = cv2.boundingRect(points)
+    mask = mask[top:top + height, left:left + width]
+    x = int(round(translation[0] - (width - 1) / 2))
+    y = int(round(translation[1] - (height - 1) / 2))
+    if x < 0 or y < 0 or x + width > background.shape[1] or y + height > background.shape[0]:
+        raise ValueError("Letter does not fit inside the image")
+    background[y:y + height, x:x + width][mask != 0] = color
+    return background, {"x": x + width / 2, "y": y + height / 2,
+                        "w": width, "h": height}
 
 def circle_data(center, radius, angle_range):
     if (angle_range[1] - angle_range[0] == 360):
@@ -136,17 +119,17 @@ def circle_data(center, radius, angle_range):
             "x" : center[0], 
             "y" : center[1], 
             "w" : 2 * radius[0], 
-            "h" : 2 * radius[0]
+            "h" : 2 * radius[1]
         }, center
     
     edge_pos = [
-        [center[0] + radius[0] * np.cos(np.deg2rad(angle_range[0])), center[1] + radius[0] * np.sin(np.deg2rad(angle_range[0]))],
-        [center[0] + radius[0] * np.cos(np.deg2rad(angle_range[1])), center[1] + radius[0] * np.sin(np.deg2rad(angle_range[1]))],
+        [center[0] + radius[0] * np.cos(np.deg2rad(angle_range[0])), center[1] + radius[1] * np.sin(np.deg2rad(angle_range[0]))],
+        [center[0] + radius[0] * np.cos(np.deg2rad(angle_range[1])), center[1] + radius[1] * np.sin(np.deg2rad(angle_range[1]))],
         [center[0], center[1]] 
     ]
     # for i in range (0, 3):
     #     image = cv2.circle(image, (int(edge_pos[i][0]), int(edge_pos[i][1])), 5, (255, 0, 0))
-    angle_r = range(angle_range[0], angle_range[1] + 1)
+    angle_r = {a % 360 for a in range(int(angle_range[0]), int(angle_range[1]) + 1)}
      
     x = {
         "min": min(center[0] - (radius[0] if 180 in angle_r else 0),
@@ -156,10 +139,10 @@ def circle_data(center, radius, angle_range):
                    , max(edge_pos, key = lambda x: x[0])[0]) 
     } 
     y = {
-        "min": min(center[1] - (radius[0] if 270 in angle_r else 0)
+        "min": min(center[1] - (radius[1] if 270 in angle_r else 0)
                    , min(edge_pos, key = lambda x: x[1])[1]),
 
-        "max": max(center[1] + (radius[0] if 90 in angle_r or 450 in angle_r else 0)
+        "max": max(center[1] + (radius[1] if 90 in angle_r or 450 in angle_r else 0)
                    , max(edge_pos, key = lambda x: x[1])[1]) 
     }
     
@@ -170,7 +153,7 @@ def circle_data(center, radius, angle_range):
     semi_centeroid_offset = 2 if angle_range[1] - angle_range[0] == 180 else 1
     edge_pos.append(
         [center[0] + semi_centeroid_offset * radius[0] * np.cos(np.deg2rad(np.average(angle_range))) , 
-         center[1] + semi_centeroid_offset * radius[0] * np.sin(np.deg2rad(np.average(angle_range))) ],
+         center[1] + semi_centeroid_offset * radius[1] * np.sin(np.deg2rad(np.average(angle_range))) ],
     )
     edge_pos = np.array(edge_pos)
 
@@ -198,21 +181,26 @@ def bounding_box(image, data, width = 1, color = (0, 0, 255)):
     return cv2.polylines(image, [vertex], True, color , width)
 
 def Circle(image, angle_range, scale, color, center, border):
-    radius = (image.shape[0] * scale / 2, image.shape[1] * scale / 2)
+    r = max(1, int(min(image.shape[:2]) * scale / 2))
+    radius = (r, r)
     # center = (dimension[0]/(image.shape[0] * 2) + translation[0] / image.shape[0], dimension[1]/(image.shape[1] * 2)+ translation[1] / image.shape[1])
-    center = [center[0] + radius[0] , center[1] + radius[1]]
+    center = [int(round(center[0] + radius[0])), int(round(center[1] + radius[1]))]
 
-    if angle_range[0] == 0 and angle_range[1] == 360:
-        cv2.circle(image, (int(center[0]), int(center[1])), int(radius[0]), color, -1)
-        data, centroid = circle_data(center, radius, angle_range)
-        return image, data, centroid 
-
-    axes = (int(radius[0]), int(radius[1]))
-    cv2.ellipse(image, (int(center[0]), int(center[1])), axes, 0, angle_range[0], angle_range[1], color, border if border else -1)
-
-    data, centroid = circle_data(center, radius, angle_range)
+    bounds, centroid = circle_data(center, radius, angle_range)
+    margin = int(np.ceil(border / 2)) if border else 0
+    if (bounds['x'] - bounds['w'] / 2 - margin < 0 or
+            bounds['y'] - bounds['h'] / 2 - margin < 0 or
+            bounds['x'] + bounds['w'] / 2 + margin >= image.shape[1] or
+            bounds['y'] + bounds['h'] / 2 + margin >= image.shape[0]):
+        raise ValueError("Circle or sector does not fit inside the image")
+    mask = np.zeros(image.shape[:2], np.uint8)
+    cv2.ellipse(mask, tuple(center), tuple(radius), 0, int(angle_range[0]),
+                int(angle_range[1]), 255, border if border else -1)
+    image[mask != 0] = color
+    x, y, width, height = cv2.boundingRect(cv2.findNonZero(mask))
+    data = {"x": x + width / 2, "y": y + height / 2, "w": width, "h": height}
     return image, data, centroid
-    
+
 # @lru_cache(maxsize = None)
 def calculate_rotated_vertex(vertices, dimension , rot_angle):
     rot_angle = np.deg2rad(rot_angle)
@@ -246,11 +234,23 @@ def Polygon(image, vertices, dimension, color, rot_angle, translation, s_border)
     min_vertex, rotated_vertices, rotated_dimension = calculate_rotated_vertex(vertices, dimension, rot_angle) 
 
 
-    translated_vertices = np.array([[vertex[0] + abs(min_vertex[0]) + translation[0], vertex[1] + abs(min_vertex[1]) + translation[1]] for vertex in rotated_vertices], np.int32)
-    # translated_vertices = tuple(tuple(vertex) for vertex in translated_vertices)
-    if s_border: 
-        image = cv2.polylines(image, [translated_vertices], isClosed=True, color=(0, 0, 0), thickness=s_border)
-    image = cv2.fillPoly(image, [translated_vertices], color = color)
+    translated_vertices = np.array([[vertex[0] - min_vertex[0] + translation[0], vertex[1] - min_vertex[1] + translation[1]] for vertex in rotated_vertices], np.int32)
+    # Reject clipping rather than saving a label for an invisible object.
+    margin = int(np.ceil(s_border / 2)) if s_border else 0
+    low, high = translated_vertices.min(axis=0), translated_vertices.max(axis=0)
+    if (np.any(low - margin < 0) or high[0] + margin >= image.shape[1] or
+            high[1] + margin >= image.shape[0]):
+        raise ValueError("Rotated polygon does not fit inside the image")
+    x, y, width, height = cv2.boundingRect(translated_vertices)
+    mask = np.zeros(image.shape[:2], np.uint8)
+    if s_border:
+        cv2.polylines(mask, [translated_vertices], True, 255, s_border)
+        image[mask != 0] = (0, 0, 0)
+    fill = np.zeros_like(mask)
+    cv2.fillPoly(fill, [translated_vertices], 255)
+    image[fill != 0] = color
+    mask |= fill
+    x, y, width, height = cv2.boundingRect(cv2.findNonZero(mask))
 
     #calculating the dimensions after rotation for the bounding box
     centroid = [
@@ -259,10 +259,10 @@ def Polygon(image, vertices, dimension, color, rot_angle, translation, s_border)
     ] 
 
     data = {
-        "x" : translation[0] + rotated_dimension[0]/2,
-        "y" : translation[1] + rotated_dimension[1]/2,
-        "w" : rotated_dimension[0],
-        "h" : rotated_dimension[1]
+        "x" : x + width/2,
+        "y" : y + height/2,
+        "w" : width,
+        "h" : height
     }
     return image, data, centroid
 

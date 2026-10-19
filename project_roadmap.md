@@ -1,5 +1,9 @@
 # UAV Object Detection MLOps Roadmap
 
+> Historical roadmap. The current direction is the local training application in
+> [implementation_plan.md](implementation_plan.md). Colab training has been retired;
+> Jetson deployment and training CI/CD are outside the current scope.
+
 ## 🎯 Project Objective
 To build a highly professional, reproducible, and automated MLOps pipeline for **Team Foxtrot (GIKI)**. 
 The pipeline will handle everything from synthetic dataset generation to training YOLO models, tracking experiments, and exporting the final model for deployment on a Jetson Orin Nano.
@@ -33,7 +37,7 @@ The pipeline will handle everything from synthetic dataset generation to trainin
 
 ### Phase 4: Cloud Training & Validation
 **Goal**: Move the heavy lifting to the cloud and make validation meaningful.
-- [ ] **Step 7A: Google Colab Workflow** - Create a Jupyter Notebook (`notebooks/train_on_colab.ipynb`) that can:
+- [ ] **Step 7A: Google Colab Workflow (retired)** - The former notebook workflow was intended to:
   1. Clone the GitHub repo.
   2. Pull the heavy dataset from DagsHub via `dvc pull`.
   3. Train the YOLO model on a free T4 GPU.

@@ -1,0 +1,2 @@
+# Build dependency; dependency resolution uses uv 0.8.22 (see docs/development.md).
+setuptools==84.0.0

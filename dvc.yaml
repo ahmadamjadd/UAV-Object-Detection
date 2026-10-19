@@ -3,6 +3,7 @@ stages:
     cmd: python src/data_generation/DataSetGeneration.py
     deps:
       - src/data_generation/
+      - src/class_names.py
       - data/raw/
     params:
       - data_generation 
@@ -23,6 +24,7 @@ stages:
     cmd: python src/train.py
     deps:
       - src/train.py
+      - src/class_names.py
       - data/split/
     params:
       - train
