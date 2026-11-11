@@ -21,11 +21,9 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 **H1–H7 implemented (fixture adapters only). Foundation exit check passed on Python 3.14 (11 November 2026): 197/197 tests, 1,216 protected files unchanged. Awaiting user review and approval for V1. V1–V8 are not implemented.**
 
-**Python 3.14 switch (11 November 2026):** `pyproject.toml` requires `>=3.14,<3.15`; `.python-version` is 3.14.4; `requirements.txt` regenerated with uv 0.8.22 constrained to the identical 186 H1 versions (only hashes changed; PyPI hashes for all files). The broken 3.12 environment was moved to `.venv-py312-broken` (6.3 GB, not deleted, not git-ignored: do not add it); new `.venv` links to `/usr/bin/python3.14` explicitly. Docs updated. Docker for teammates is planned after project completion, using the same Python 3.14 and lock.
+**Python 3.14 switch (11 November 2026):** `pyproject.toml` requires `>=3.14,<3.15`; `.python-version` is 3.14.4; `requirements.txt` regenerated with uv 0.8.22 constrained to the identical 186 H1 versions (only hashes changed; PyPI hashes for all files). The broken 3.12 environment was deleted at the user's request after verification; new `.venv` links to `/usr/bin/python3.14` explicitly. Docs updated. Docker for teammates is planned after project completion, using the same Python 3.14 and lock.
 
-**Environment blocker (found 10 November 2026):** `.venv/bin/python` links to `/usr/bin/python3`, which is now Python 3.14; Python 3.12 is no longer installed, so `.venv` (built for 3.12.3) cannot import its packages. The agent did not install or rebuild anything in the project. H6 was checked in a throwaway scratchpad venv (system Python 3.14 + pinned pydantic 2.13.5/PyYAML 6.0.3). Rebuilding `.venv` on Python 3.12 (docs/development.md) requires user approval.
-
-The latest instruction authorized completing **all H5 autonomously**. H5 now has a separate worker and fixed subprocess runner with durable cancellation, output capture, exit metadata, leases, and bounded child cleanup. It currently runs explicit infrastructure fixtures, never YOLO. H6 is not authorized. No product website/API, real training execution, or MLflow upload exists yet.
+**Git (11 November 2026):** all H4–H7 work and the Python 3.14 switch are committed as `f60b96d` ("Complete foundation H4–H7 and move to Python 3.14") on branch `foundation-h4-h7`, pushed to the `github` remote at the user's request. `main` (tracking DagsHub `origin`) is unchanged and not merged. Working tree clean after the commit.
 
 ## Implemented work
 
@@ -186,33 +184,26 @@ totals; fixture checkpoint bytes are not real models.
 - Historical 10 October remediation evidence remains in repository_verification.md; it is distinct from current H3 evidence.
 - User manually reported H3 checks passing through H3.8, including all 39 tests. Agent independently reran those before completing H3.
 
-## Existing local changes to preserve
+## Repository state and changes to preserve
 
-Rechecked HEAD: **349954e2f84c091e7e8b4a4f7950ab75d2c8a480** (Implementing software).
-The working tree was **clean before H4**: earlier foundation changes and source
-cleanup are now part of that baseline, superseding the old dirty-tree inventory.
-Do not restore deleted legacy files or reset source to the older H1 revision.
+Base: `349954e` (Implementing software) on `main`. Foundation commit: `f60b96d` on
+`foundation-h4-h7` (GitHub). Do not restore deleted legacy files or reset source
+to the older H1 revision.
 
-- H5 began with the completed H4 changes still uncommitted. Preserve all current H1–H5 source/tests/docs, including shared H4 files extended for H5. No commit or Git mutation was made by the agent.
 - Issue 3–7 corrections: sorted/seeded generation, square-size and glyph validation, corrected geometry/boxes, bounded background preflight preserving old outputs, lightweight shared class metadata and no training-import .env reads.
 - Keep n as images per class and generator size separate from training imgsz. Preserve all six original regression files.
+- Legacy `src/train.py`, `src/test.py`, `src/split_dataset.py`, `src/class_names.py`, generator, params and DVC files are unchanged and remain the CLI path.
+- The built interface in `src/foxtrot/api/static/` is committed deliberately; rebuild it with `cd frontend && npm run build` after frontend changes.
 - No applicable AGENTS.md was found in the repository or ancestor chain during inspection.
 
 ## Exact next proposed action
 
-**Superseded 10 November 2026:** H6 is implemented. Next: user reviews H6, repairs `.venv` on Python 3.12 (or approves the agent doing so), and runs `.venv/bin/python -B scripts/verify_baseline.py` to confirm the full suite and protected files. Then propose H7 as approximately 4–5 approved steps.
+Foundation is complete. Wait for explicit user approval to start **V1 — train an
+existing dataset and open its MLflow result**. V1 scope (plan section 3): real
+Ultralytics trainer/evaluator adapter behind the H6 contracts, registering an
+existing local dataset from the browser, real MLflow `TrackingClient` behind the
+H6 outbox, epoch-level metrics, and the "View in MLflow" result link. Also decide
+with the user whether to merge `foundation-h4-h7` into `main` first.
 
-Historical (pre-H6) text follows.
-
-Wait for user review of H5 and explicit permission to advance. Then propose H6
-as approximately 4–5 reviewable steps, beginning with explicit-input pipeline
-adapter contracts and a fixture integration through the existing supervisor.
-State scope, purpose, and expected files before implementation. Supply copyable
-code and test commands under the normal manual workflow unless newly authorized
-to edit/execute. H6 owns pipeline/tracking boundaries; real YOLO/MLflow workflow
-remains V1. Do not start H6 or treat the handoff/tests as permission.
-
-No H5 completion blocker remains. Linux/pidfd and a single OS user are the verified
-scope; Docker, other OS/GPU, detached child sessions, real adapters, and product
-browser/API remain unverified/deferred. Ambiguous ownership remains held for
-explicit recovery. The foundation exit check still requires H6–H7.
+Open items: GPU execution, other operating systems, and Docker remain unverified;
+ambiguous ownership remains held for explicit V7 recovery; one uploader at a time.

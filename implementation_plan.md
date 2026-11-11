@@ -6,7 +6,7 @@ Architecture: **Option C — a local application serving both the website and AP
 
 Delivery approach: **Build a limited horizontal foundation first, then deliver complete vertical slices.**
 
-Status: **Foundation implemented through H7 (fixture adapters only; see the progress list). H6 adapter boundaries are also implemented (fixture adapters only; see the progress list). H1–H5 are implemented, including a local worker, owned subprocess supervision, cancellation, and durable progress/recovery. H5 completion verification passed all 163 repository tests, including the 21 issue 3–7 regressions; 1,216 protected files were unchanged. The worker currently runs explicit infrastructure fixtures. No usable website, product API, or real training workflow has been delivered. H6–H7 and V1–V8 remain unimplemented. H6 awaits explicit user approval.**
+Status: **Foundation complete (H1–H7), 11 November 2026. The foundation exit check passed on Python 3.14.4: 197/197 repository tests, including the 21 issue 3–7 regressions, with 1,216 protected files unchanged. One launcher command starts the local website/API and a separate worker; jobs run through owned subprocesses with durable progress, cancellation, and recovery. Training uses the fixture adapter only: no real YOLO training or MLflow upload exists yet. Committed as `f60b96d` on branch `foundation-h4-h7` (pushed to GitHub, not yet merged into `main`). Next: V1, which requires explicit user approval. V1–V8 are not implemented.**
 
 This plan builds on [research.md](research.md), [project_roadmap.md](project_roadmap.md), and [repository_verification.md](repository_verification.md). Repository issues 3–7 are treated as resolved. Preserve their corrections and regression tests.
 
