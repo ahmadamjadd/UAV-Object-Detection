@@ -7,7 +7,7 @@ name = "foxtrot-local"
 version = "0.1.0"
 description = "Team Foxtrot local training application foundation"
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.14,<3.15"
 dependencies = [
     "colorama==0.4.6",
     "numpy==2.5.3",
@@ -31,3 +31,7 @@ dependencies = [
 where = ["src"]
 include = ["foxtrot", "foxtrot.*"]
 namespaces = false
+
+[tool.setuptools.package-data]
+# The built browser interface (npm run build in frontend/) ships inside the package.
+"foxtrot.api" = ["static/*.html", "static/assets/*"]

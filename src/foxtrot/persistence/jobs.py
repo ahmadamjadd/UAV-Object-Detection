@@ -3,19 +3,31 @@
 from dataclasses import dataclass, fields
 import hashlib
 import json
+import os
 from pathlib import Path
 import shutil
 import sqlite3
 from uuid import uuid4
 
 from foxtrot.config.job import JobSpec
+from foxtrot.config.lifecycle import ErrorDetails
 from foxtrot.config.snapshot import JobConfigurations, resolve_job
 
 from .database import connect_database
+from .events import _append_event
 from .files import (
     JOB_FORMAT, JOB_MARKER, job_file, job_path, sync_directory, write_new_text,
 )
 from .workspace import initialize_workspace
+from .processes import capture_process_identity
+
+
+class InvalidJobConfiguration(ValueError):
+    """Identify the queued job whose immutable input cannot be loaded."""
+
+    def __init__(self, job_id: str, message: str):
+        super().__init__(message)
+        self.job_id = job_id
 
 
 @dataclass(frozen=True)
@@ -32,6 +44,18 @@ class JobRecord:
     resolved_sha256: str | None
     claim_token: str | None
     claimed_at: str | None
+    error_details: ErrorDetails | None
+    tracking_error: ErrorDetails | None
+    owner_pid: int | None
+    owner_start_id: str | None
+    process_pid: int | None
+    process_start_id: str | None
+    process_group_id: int | None
+    process_launch_pending: bool
+    recovery_required: bool
+    cancel_requested: bool
+    exit_code: int | None
+    finished_at: str | None
 
 
 @dataclass(frozen=True)
@@ -45,7 +69,13 @@ class JobClaim:
 
 
 def _record(row: sqlite3.Row) -> JobRecord:
-    return JobRecord(**{field.name: row[field.name] for field in fields(JobRecord)})
+    values = {field.name: row[field.name] for field in fields(JobRecord)}
+    for name in ("error_details", "tracking_error"):
+        if values[name] is not None:
+            values[name] = ErrorDetails.model_validate_json(values[name])
+    for name in ("process_launch_pending", "recovery_required", "cancel_requested"):
+        values[name] = bool(values[name])
+    return JobRecord(**values)
 
 
 def _required_row(connection: sqlite3.Connection, job_id: str) -> sqlite3.Row:
@@ -211,6 +241,9 @@ def create_recorded_job(
             )
             if json.loads(saved.submitted_json) != json.loads(snapshots.submitted_json):
                 raise ValueError("Saved configuration differs from the submitted request")
+            _append_event(connection, job_directory.name, "state_changed", {
+                "domain": "execution", "previous": None, "state": "queued",
+            }, "system:submitted")
 
     return job_directory
 
@@ -221,6 +254,19 @@ def get_job_record(
     """Read persisted metadata using a fresh connection."""
     with connect_database(workspace_root, source_checkout) as connection:
         return _record(_required_row(connection, job_id))
+
+
+def list_job_records(
+    workspace_root: str | Path, source_checkout: str | Path, *, limit: int = 50,
+) -> tuple[JobRecord, ...]:
+    """Newest jobs first, for history/activity screens."""
+    if type(limit) is not int or not 1 <= limit <= 500:
+        raise ValueError("Job list limit must be between 1 and 500")
+    with connect_database(workspace_root, source_checkout) as connection:
+        rows = connection.execute(
+            "SELECT * FROM jobs ORDER BY created_at DESC, rowid DESC LIMIT ?", (limit,),
+        ).fetchall()
+        return tuple(_record(row) for row in rows)
 
 
 def load_job_configurations(
@@ -242,15 +288,15 @@ def claim_next_job(
 ) -> JobClaim | None:
     """Reserve the oldest queued job, allowing one active job per workspace.
 
-    A stale active job blocks further claims until H4 reconciles it. No process
-    is started here, and closing/reopening the database never resets a claim.
+    Active jobs and unresolved recovery holds block claims. No process is
+    started here, and closing/reopening the database never resets a claim.
     """
     root = initialize_workspace(workspace_root, source_checkout)
     with connect_database(root, source_checkout) as connection:
         with connection:
             connection.execute("BEGIN IMMEDIATE")
             active = connection.execute(
-                "SELECT 1 FROM jobs WHERE execution_state IN ('preparing', 'training', 'evaluating') LIMIT 1",
+                "SELECT 1 FROM jobs WHERE execution_state IN ('preparing', 'training', 'evaluating') OR recovery_required = 1 LIMIT 1",
             ).fetchone()
             if active is not None:
                 return None
@@ -259,16 +305,23 @@ def claim_next_job(
             ).fetchone()
             if row is None:
                 return None
-            directory, configurations = _read_configurations(connection, root, row)
+            try:
+                directory, configurations = _read_configurations(connection, root, row)
+            except (ValueError, OSError) as error:
+                raise InvalidJobConfiguration(row["job_id"], str(error)) from error
             token = uuid4().hex
+            owner = capture_process_identity(os.getpid())
             changed = connection.execute(
                 """UPDATE jobs SET execution_state = 'preparing', claim_token = ?,
-                          claimed_at = CURRENT_TIMESTAMP
+                          claimed_at = CURRENT_TIMESTAMP, owner_pid = ?, owner_start_id = ?
                    WHERE job_id = ? AND execution_state = 'queued'""",
-                (token, row["job_id"]),
+                (token, owner.pid, owner.start_id, row["job_id"]),
             ).rowcount
             if changed != 1:
                 raise RuntimeError("Queued job changed while being claimed")
+            _append_event(connection, row["job_id"], "state_changed", {
+                "domain": "execution", "previous": "queued", "state": "preparing",
+            }, "system:claimed")
             claim = JobClaim(row["job_id"], token, directory, configurations)
     return claim
 

@@ -2,13 +2,16 @@
 
 from contextlib import closing
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 import sqlite3
+
+from foxtrot.config.event import ProgressEvent
 
 from .workspace import initialize_workspace
 
 
-DATABASE_SCHEMA_VERSION = 3
+DATABASE_SCHEMA_VERSION = 6
 
 _MIGRATIONS: dict[int, tuple[str, ...]] = {
     1: (),
@@ -72,7 +75,87 @@ _MIGRATIONS: dict[int, tuple[str, ...]] = {
         )
         """,
     ),
+    4: (
+        "ALTER TABLE jobs ADD COLUMN error_details TEXT",
+        "ALTER TABLE jobs ADD COLUMN tracking_error TEXT",
+        "ALTER TABLE jobs ADD COLUMN owner_pid INTEGER",
+        "ALTER TABLE jobs ADD COLUMN owner_start_id TEXT",
+        "ALTER TABLE jobs ADD COLUMN process_pid INTEGER",
+        "ALTER TABLE jobs ADD COLUMN process_start_id TEXT",
+        "ALTER TABLE jobs ADD COLUMN process_group_id INTEGER",
+        "ALTER TABLE jobs ADD COLUMN process_launch_pending INTEGER NOT NULL DEFAULT 0 CHECK (process_launch_pending IN (0, 1))",
+        "ALTER TABLE jobs ADD COLUMN recovery_required INTEGER NOT NULL DEFAULT 0 CHECK (recovery_required IN (0, 1))",
+        """
+        CREATE TABLE job_events (
+            job_id TEXT NOT NULL REFERENCES jobs(job_id),
+            sequence INTEGER NOT NULL
+                CHECK (typeof(sequence) = 'integer' AND sequence >= 1),
+            event_key TEXT,
+            event_json TEXT NOT NULL,
+            PRIMARY KEY (job_id, sequence),
+            UNIQUE (job_id, event_key)
+        )
+        """,
+    ),
+    5: (
+        "ALTER TABLE jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK (cancel_requested IN (0, 1))",
+        "ALTER TABLE jobs ADD COLUMN exit_code INTEGER CHECK (exit_code IS NULL OR typeof(exit_code) = 'integer')",
+        "ALTER TABLE jobs ADD COLUMN finished_at TEXT",
+    ),
+    6: (
+        # One tracking run per local job. The browser-facing URL is stored
+        # separately from any tracking API address, which stays in settings.
+        """
+        CREATE TABLE tracking_runs (
+            job_id TEXT PRIMARY KEY NOT NULL REFERENCES jobs(job_id),
+            destination_id TEXT NOT NULL CHECK (length(trim(destination_id)) > 0),
+            run_id TEXT NOT NULL CHECK (length(trim(run_id)) > 0),
+            run_url TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """,
+        # Ordered pending uploads. Rows are acknowledged, never deleted, so a
+        # retry resumes after the last confirmed operation.
+        """
+        CREATE TABLE tracking_outbox (
+            job_id TEXT NOT NULL REFERENCES jobs(job_id),
+            position INTEGER NOT NULL
+                CHECK (typeof(position) = 'integer' AND position >= 1),
+            operation TEXT NOT NULL CHECK (operation IN (
+                'create_run', 'log_params', 'log_metrics', 'log_artifact', 'set_terminated'
+            )),
+            payload_json TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0
+                CHECK (typeof(attempts) = 'integer' AND attempts >= 0),
+            acknowledged_at TEXT,
+            PRIMARY KEY (job_id, position)
+        )
+        """,
+    ),
 }
+
+
+def _seed_legacy_events(connection: sqlite3.Connection) -> None:
+    """Record the imported state, without inventing pre-H4 progress history."""
+    rows = connection.execute(
+        "SELECT job_id, execution_state, tracking_state, last_event_sequence FROM jobs"
+    ).fetchall()
+    for job_id, execution, tracking, sequence in rows:
+        event = ProgressEvent(
+            job_id=job_id, sequence=sequence + 1, timestamp=datetime.now(UTC),
+            event_type="state_changed", payload={
+                "source": "migration", "execution_state": execution,
+                "tracking_state": tracking, "prior_history_available": False,
+            },
+        )
+        connection.execute(
+            "INSERT INTO job_events (job_id, sequence, event_key, event_json) VALUES (?, ?, ?, ?)",
+            (job_id, event.sequence, "system:migration-v4", event.model_dump_json()),
+        )
+        connection.execute(
+            "UPDATE jobs SET last_event_sequence = ? WHERE job_id = ?",
+            (event.sequence, job_id),
+        )
 
 
 def initialize_database(
@@ -125,6 +208,9 @@ def initialize_database(
             ):
                 for statement in _MIGRATIONS[next_version]:
                     connection.execute(statement)
+
+                if next_version == 4:
+                    _seed_legacy_events(connection)
 
                 connection.execute(
                     f"PRAGMA user_version = {next_version}"

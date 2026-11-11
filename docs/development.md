@@ -7,7 +7,9 @@ a website, API server, worker, or a `foxtrot serve` command.
 ## Verified target and scope
 
 - Ubuntu 24.04.4 LTS, Linux x86_64; Intel Core i5-13420H, CPU execution.
-- CPython 3.12.3 (`.python-version`). Package metadata accepts Python 3.12 only.
+- CPython 3.14.4 (`.python-version`). Package metadata accepts Python 3.14 only.
+  Switched from the H1 target CPython 3.12.3 on 11 November 2026 after the OS
+  upgrade removed 3.12; all 186 locked versions are unchanged (see "Maintaining locks").
 - Node 22.17.0 (`.nvmrc`) and npm 10.9.2, needed by developers for the frontend.
 - The user chose this machine for now and deferred a second machine in favor of
   later Docker containerization. Docker is not implemented or verified in H1.
@@ -17,7 +19,7 @@ a website, API server, worker, or a `foxtrot serve` command.
 
 Direct Python dependencies are pinned in `pyproject.toml`; `requirements.txt`
 locks their complete dependency set and allowed artifact hashes for **Linux
-x86_64 / CPython 3.12**. It includes the pinned build dependency from
+x86_64 / CPython 3.14**. It includes the pinned build dependency from
 `requirements-dev.in`. Do not reuse this platform lock as a claim of Windows,
 macOS, ARM, or GPU support. Optuna is intentionally deferred until V5.
 
@@ -39,10 +41,10 @@ in its [getting-started guide](https://vite.dev/guide/).
 
 ## Create the Python environment
 
-From the repository root, with Python 3.12.3 installed:
+From the repository root, with Python 3.14 installed:
 
 ```bash
-python3 -m venv .venv
+python3.14 -m venv .venv
 .venv/bin/python -m pip install setuptools==84.0.0
 .venv/bin/python -m pip install --require-hashes --no-build-isolation -r requirements.txt
 .venv/bin/python -m pip install --no-deps --no-build-isolation -e .
@@ -110,9 +112,12 @@ will not need Node once application packaging is delivered.
 | `frontend/` | H7 browser shell and subsequent workflow screens | Talks to the API and its authoritative schemas |
 
 At H1 these packages contained only boundary descriptions. H2 implemented the
-configuration contracts, and H3 implemented local storage and queue claims; see
-[persistence.md](persistence.md). Later execution, tracking, and API boundaries
-remain to be implemented. Setuptools
+configuration contracts, H3 implemented local storage and queue claims, and H4
+added durable states/events and ownership reconciliation; see
+[persistence.md](persistence.md) and [lifecycle.md](lifecycle.md).
+H5 implements fixture worker/process supervision; see [execution.md](execution.md).
+Real pipeline/tracking adapters and API/browser integration remain later work.
+Setuptools
 explicitly packages `foxtrot*` under `src/`; it does not accidentally distribute
 legacy scripts, datasets, generator resources, tests, or credentials. See
 [setuptools package discovery](https://setuptools.pypa.io/en/stable/userguide/package_discovery.html).
@@ -124,10 +129,14 @@ V2. This baseline does not refactor the generator or training code.
 ## Maintaining locks
 
 Only regenerate a lock as an intentional dependency change on the verified target,
-then rerun the relevant checks. With uv 0.8.22 available:
+then rerun the relevant checks. With uv 0.8.22 available, write the existing
+`name==version` lines to `<current-pins.txt>` and pass them as constraints so
+versions stay fixed unless a change is intended. Write to a fresh output file:
+uv reuses hashes from an existing output file, which keeps stale hashes when the
+Python version changes. Restore the three-line header comment afterwards:
 
 ```bash
-uv pip compile pyproject.toml requirements-dev.in --python-version 3.12 --generate-hashes -o requirements.txt
+uv pip compile pyproject.toml requirements-dev.in -c <current-pins.txt> --python-version 3.14 --python-platform x86_64-unknown-linux-gnu --generate-hashes --no-header --no-annotate -o requirements.txt
 ```
 
 During H1, resolution and hash-checked installation used existing cached public

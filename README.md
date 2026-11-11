@@ -13,6 +13,13 @@ approval state are recorded in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.
 The H2 configuration contracts and H3 local persistence now support validated job
 files, database records, queue reservations, and exact artifact references.
 See [docs/persistence.md](docs/persistence.md) for storage behavior and checks.
+H4 adds independent execution/upload states, committed progress history, and
+restart reconciliation. See [docs/lifecycle.md](docs/lifecycle.md) for the
+contracts, Linux process evidence, and verification fixtures. H5 adds the local
+worker, fixed subprocess runner, durable cancellation, output capture, and
+bounded child cleanup; see [docs/execution.md](docs/execution.md). It currently
+runs explicit infrastructure fixtures. Real adapters and the browser application
+remain later work.
 
 ## Project files
 
