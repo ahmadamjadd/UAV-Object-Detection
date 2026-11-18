@@ -6,7 +6,10 @@ no request ever trains, so the website stays responsive during training.
 
 from dataclasses import asdict
 import importlib.metadata
+import json
 from pathlib import Path
+import subprocess
+import sys
 import typing
 import urllib.request
 
@@ -17,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from foxtrot.config.job import JobSpec
+from foxtrot.config.result import JobResult
 from foxtrot.config.training import TrainingSettings
 from foxtrot.config.snapshot import resolve_job
 from foxtrot.persistence.commands import request_cancel
@@ -25,14 +29,16 @@ from foxtrot.persistence.dataset_import import import_dataset
 from foxtrot.persistence.datasets import DatasetUnavailable, list_datasets
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.models import WeightsError, install_weights, list_weights
+from foxtrot.persistence.files import job_file, job_path
 from foxtrot.persistence.jobs import (
     JobRecord, create_recorded_job, get_job_record, list_job_records, load_job_configurations,
 )
-from foxtrot.persistence.tracking import get_run_association
+from foxtrot.persistence.tracking import get_run_association, list_tracking
 from foxtrot.pipeline.registry import PipelineSettings
 
 from .security import LOOPBACK_HOSTS, require_local_session
 from .settings import DestinationUpdate, SettingsStore
+from .uploads import UploadScheduler
 
 STATIC_DIRECTORY = Path(__file__).with_name("static")
 
@@ -88,6 +94,7 @@ def create_app(
     app.state.pipeline_adapter = pipeline_adapter
     app.state.settings = SettingsStore(workspace_root, source_checkout)
     app.state.weights_opener = urllib.request.urlopen  # replaced in tests: no real downloads
+    app.state.uploads = UploadScheduler(workspace_root, source_checkout)  # started by the launcher
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOOPBACK_HOSTS))
     workspace, checkout = app.state.workspace, app.state.checkout
 
@@ -151,6 +158,11 @@ def create_app(
     def destinations():
         return app.state.settings.destinations()
 
+    # What the automatic uploader did last and when it checks next.
+    @app.get("/api/uploads")
+    def uploads():
+        return app.state.uploads.status()
+
     @app.get("/api/jobs")
     def jobs(limit: int = 50):
         if not 1 <= limit <= 500:
@@ -166,7 +178,12 @@ def create_app(
                 load_job_configurations(workspace, checkout, job_id).resolved_json).model_dump(mode="json")
         except ValueError:
             resolved = None  # changed/unsafe configuration; the job itself records why
-        return {**_job_view(record), "resolved": resolved,
+        try:  # the official outcome and scores, once the job has finished
+            result = JobResult.model_validate_json(
+                job_file(job_path(workspace.resolve(), job_id), "result.json").read_bytes()).model_dump(mode="json")
+        except (ValueError, OSError):
+            result = None
+        return {**_job_view(record), "resolved": resolved, "result": result,
                 "tracking_run": asdict(association) if association else None}
 
     @app.get("/api/jobs/{job_id}/events")
@@ -193,6 +210,14 @@ def create_app(
             raise HTTPException(status_code=409, detail=str(error)) from error
         return _job_view(get_job_record(workspace, checkout, directory.name))
 
+    # Upload this job's unsent results now instead of waiting for the next automatic try.
+    @app.post("/api/jobs/{job_id}/retry-sync", dependencies=guarded)
+    def retry_sync(job_id: str):
+        if not list_tracking(workspace, checkout, job_id, pending_only=True):
+            raise HTTPException(status_code=409, detail="Nothing is waiting to be uploaded for this job")
+        app.state.uploads.trigger()
+        return {"queued": True}
+
     @app.post("/api/jobs/{job_id}/cancel", dependencies=guarded)
     def cancel(job_id: str):
         return _job_view(request_cancel(workspace, checkout, job_id))
@@ -202,6 +227,23 @@ def create_app(
         if update.destination_id != destination_id:
             raise HTTPException(status_code=422, detail="Destination ID must match the URL")
         return app.state.settings.save_destination(update)
+
+    # Test a saved destination in a separate process, so MLflow and credentials never load here.
+    @app.post("/api/tracking/destinations/{destination_id}/check", dependencies=guarded)
+    def check_destination(destination_id: str):
+        if destination_id not in {d["destination_id"] for d in app.state.settings.destinations()}:
+            raise HTTPException(status_code=404, detail="Unknown tracking destination")
+        command = [sys.executable, "-B", "-m", "foxtrot.tracking.sync", "--workspace", str(workspace),
+                   "--source-checkout", str(checkout), "check", destination_id]
+        try:
+            result = subprocess.run(command, cwd=workspace, stdin=subprocess.DEVNULL,
+                                    capture_output=True, text=True, timeout=90)
+        except subprocess.TimeoutExpired:
+            return {"ok": False, "message": "No answer within 90 seconds."}
+        try:
+            return json.loads(result.stdout.strip().splitlines()[-1])
+        except (ValueError, IndexError):
+            return {"ok": False, "message": "The check could not run; see the launcher terminal."}
 
     # Download the official pretrained weights into the workspace and record their fingerprint.
     @app.post("/api/models/{model_id}/install", dependencies=guarded)

@@ -66,3 +66,7 @@ progress { width: 100%; }
 ol.events { list-style: none; padding: 0; margin: 0; max-height: 360px; overflow: auto; font-size: 0.85rem; }
 ol.events li { padding: 3px 0; border-bottom: 1px dashed var(--line); overflow-wrap: anywhere; }
 code { font-size: 0.9em; }
+a.button {
+  display: inline-block; padding: 6px 14px; border-radius: 6px; text-decoration: none;
+  background: var(--accent); color: #fff;
+}

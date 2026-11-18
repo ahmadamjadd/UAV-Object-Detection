@@ -80,6 +80,14 @@ cd frontend && npm run dev      # Vite dev server; proxies /api to a running lau
 
 Team members do not need Node: the built files ship with the package.
 
+## Added in V1
+
+`POST /api/datasets` (import), `GET /api/models` and `POST /api/models/{id}/install`
+(pretrained weights), `POST /api/tracking/destinations/{id}/check` (Test connection),
+`POST /api/jobs/{id}/retry-sync` and `GET /api/uploads` (automatic uploads); job
+detail now includes the official `result`. The launcher also starts the background
+uploader, and `--source-checkout` is optional. See [training.md](training.md).
+
 ## Limits
 
 - Progress uses 1-second polling with the event cursor; Server-Sent Events can come with V1.

@@ -18,6 +18,10 @@ export type JobView = {
 export type JobDetail = JobView & {
   resolved: Record<string, unknown> | null;
   tracking_run: { run_id: string; run_url: string | null } | null;
+  result: {
+    outcome: string;
+    evaluation: { precision: number; recall: number; map50: number; map50_95: number } | null;
+  } | null;
 };
 
 export type JobEvent = {
@@ -97,6 +101,8 @@ export const api = {
   schemas: () => request<{ job: any }>("GET", "/api/schemas"),
   datasets: () => request<Dataset[]>("GET", "/api/datasets"),
   destinations: () => request<Destination[]>("GET", "/api/tracking/destinations"),
+  checkDestination: (id: string) =>
+    request<{ ok: boolean; message: string }>("POST", `/api/tracking/destinations/${encodeURIComponent(id)}/check`),
   saveDestination: (value: Record<string, unknown>) =>
     request<Destination>("PUT", `/api/tracking/destinations/${encodeURIComponent(String(value.destination_id))}`, value),
   importDataset: (value: Record<string, unknown>) => request<DatasetImportResult>("POST", "/api/datasets", value),
@@ -108,9 +114,17 @@ export const api = {
   submit: (submissionKey: string, jobRequest: Record<string, unknown>) =>
     request<JobView>("POST", "/api/jobs", { submission_key: submissionKey, request: jobRequest }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
+  retrySync: (id: string) => request<{ queued: boolean }>("POST", `/api/jobs/${id}/retry-sync`),
 };
 
 export const TERMINAL = new Set(["finished", "failed", "cancelled", "interrupted"]);
+
+// The database stores UTC times like "2026-11-18 10:10:40"; show them in this computer's local time.
+export function formatTime(value: string | null): string {
+  if (!value) return "";
+  const date = new Date(value.includes("T") ? value : `${value.replace(" ", "T")}Z`);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+}
 
 export function describeError(error: unknown): string {
   if (error instanceof ApiError && Array.isArray(error.detail)) {

@@ -160,3 +160,13 @@ def get_run_association(
         if row is None:
             return None
         return RunAssociation(row["job_id"], row["destination_id"], row["run_id"], row["run_url"])
+
+
+# Jobs that still have upload steps waiting, oldest job first.
+def jobs_with_pending_tracking(workspace_root: str | Path, source_checkout: str | Path) -> list[str]:
+    with connect_database(workspace_root, source_checkout) as connection:
+        rows = connection.execute(
+            """SELECT DISTINCT o.job_id FROM tracking_outbox o JOIN jobs j ON j.job_id = o.job_id
+               WHERE o.acknowledged_at IS NULL ORDER BY j.created_at, j.rowid""",
+        ).fetchall()
+        return [row[0] for row in rows]

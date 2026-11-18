@@ -1,6 +1,7 @@
 """Start Foxtrot: the loopback API/website plus a separate worker process.
 
-    python -m foxtrot.api.launcher --workspace /abs/ws --source-checkout /abs/MlOps --pipeline-adapter fixture
+    foxtrot --workspace /abs/ws --pipeline-adapter ultralytics
+    python -m foxtrot.api.launcher --workspace /abs/ws --source-checkout /abs/MlOps --pipeline-adapter ultralytics
 
 Closing the browser changes nothing. Ctrl+C (or SIGTERM) stops the website,
 then asks the worker to stop and waits for its bounded cleanup, so training
@@ -29,6 +30,13 @@ from .settings import RedactingFilter
 
 HOST = "127.0.0.1"  # loopback only; deliberately not configurable
 WORKER_ALREADY_RUNNING = 2
+
+
+# The folder that contains the running Foxtrot code: the checkout's src/ folder, or
+# site-packages for an installed copy. Workspaces must live outside it.
+def installed_code_directory() -> Path:
+    import foxtrot
+    return Path(foxtrot.__file__).resolve().parents[1]
 
 
 def worker_stop_seconds(limits: SupervisorLimits = SupervisorLimits()) -> float:
@@ -62,7 +70,8 @@ def stop_worker(worker: subprocess.Popen) -> int | None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workspace", required=True, type=Path)
-    parser.add_argument("--source-checkout", required=True, type=Path)
+    parser.add_argument("--source-checkout", type=Path, default=installed_code_directory(),
+                        help="Folder holding the Foxtrot code; the workspace must be outside it (default: detected)")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--pipeline-adapter", choices=("fixture", "ultralytics"),
                         help="Worker runs this adapter; omit to run H5 infrastructure fixtures")
@@ -94,6 +103,7 @@ def main(argv=None) -> int:
         if not server.started:
             return
         print(f"Foxtrot is running at {url} (Ctrl+C to stop)", flush=True)
+        app.state.uploads.start()  # send finished jobs to MLflow automatically
         if worker is not None:
             time.sleep(0.5)
             if worker.poll() == WORKER_ALREADY_RUNNING:
@@ -109,6 +119,7 @@ def main(argv=None) -> int:
     except (KeyboardInterrupt, SystemExit):
         pass
     finally:
+        app.state.uploads.stop()  # an interrupted upload resumes next time
         code = stop_worker(worker) if worker is not None else 0
     if not server.started:
         print(f"Could not serve on {url}; is the port already in use?", file=sys.stderr)

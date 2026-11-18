@@ -3,23 +3,29 @@
 Synthetic UAV detection data generation and local YOLO training, with DVC for
 pipeline/data provenance and MLflow for experiment tracking.
 
-The local web application is planned in [implementation_plan.md](implementation_plan.md).
-It has not been implemented yet.
+## Local training website (V1)
 
-The H1 development baseline (package skeleton, pinned dependencies, and safe
-verification commands) is documented in [docs/development.md](docs/development.md).
-Use that setup before running the commands below. Current implementation and
-approval state are recorded in [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
-The H2 configuration contracts and H3 local persistence now support validated job
-files, database records, queue reservations, and exact artifact references.
-See [docs/persistence.md](docs/persistence.md) for storage behavior and checks.
-H4 adds independent execution/upload states, committed progress history, and
-restart reconciliation. See [docs/lifecycle.md](docs/lifecycle.md) for the
-contracts, Linux process evidence, and verification fixtures. H5 adds the local
-worker, fixed subprocess runner, durable cancellation, output capture, and
-bounded child cleanup; see [docs/execution.md](docs/execution.md). It currently
-runs explicit infrastructure fixtures. Real adapters and the browser application
-remain later work.
+Foxtrot now runs as a local website: import a YOLO dataset, train YOLOv8n for real,
+follow progress, and open the exact run in MLflow (for example on DagsHub).
+
+```bash
+foxtrot --workspace /abs/path/to/foxtrot-workspace --pipeline-adapter ultralytics
+```
+
+The browser opens at http://127.0.0.1:8765/. Step-by-step use, what each stage
+guarantees, and current limits are in [docs/training.md](docs/training.md).
+Environment setup (Python 3.14, locked dependencies) is in
+[docs/development.md](docs/development.md); architecture and delivery steps are in
+[implementation_plan.md](implementation_plan.md); current state is recorded in
+[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
+
+Foundation details: storage [docs/persistence.md](docs/persistence.md), job states
+[docs/lifecycle.md](docs/lifecycle.md), worker/supervisor
+[docs/execution.md](docs/execution.md), adapter boundaries
+[docs/adapters.md](docs/adapters.md), website/API shell
+[docs/application.md](docs/application.md).
+
+The original command-line pipeline below still works unchanged.
 
 ## Project files
 

@@ -27,6 +27,10 @@ dependencies = [
     "uvicorn==0.54.0",
 ]
 
+[project.scripts]
+# "foxtrot --workspace /abs/path" starts the website, API and worker.
+foxtrot = "foxtrot.api.launcher:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["foxtrot", "foxtrot.*"]

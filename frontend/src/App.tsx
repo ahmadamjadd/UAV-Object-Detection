@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
-  api, Capabilities, Dataset, describeError, Destination, JobDetail, JobEvent, JobView, TERMINAL,
+  api, Capabilities, Dataset, describeError, Destination, formatTime, JobDetail, JobEvent, JobView, TERMINAL,
 } from "./api";
 import { Datasets } from "./Datasets";
 import { Weights } from "./Weights";
@@ -50,8 +50,18 @@ export function App() {
 function Setup({ capabilities }: { capabilities: Capabilities | null }) {
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [message, setMessage] = useState("");
+  const [checks, setChecks] = useState<Record<string, string>>({});
   const load = () => api.destinations().then(setDestinations, (e) => setMessage(describeError(e)));
   useEffect(() => { load(); }, []);
+
+  // Ask the backend to try connecting to one destination, and show the answer next to it.
+  async function check(id: string) {
+    setChecks((old) => ({ ...old, [id]: "Testing…" }));
+    try {
+      const result = await api.checkDestination(id);
+      setChecks((old) => ({ ...old, [id]: `${result.ok ? "✅" : "❌"} ${result.message}` }));
+    } catch (error) { setChecks((old) => ({ ...old, [id]: `❌ ${describeError(error)}` })); }
+  }
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -90,7 +100,11 @@ function Setup({ capabilities }: { capabilities: Capabilities | null }) {
             {destinations.map((d) => (
               <li key={d.destination_id}>
                 <strong>{d.destination_id}</strong> <span className="muted">{d.kind} · {d.tracking_uri}</span>
-                {d.has_credentials && <span className="badge small">credentials saved</span>}
+                {d.has_credentials && <span className="badge small">credentials saved</span>}{" "}
+                <button onClick={() => check(d.destination_id)} disabled={checks[d.destination_id] === "Testing…"}>
+                  Test connection
+                </button>
+                {checks[d.destination_id] && <div className="muted">{checks[d.destination_id]}</div>}
               </li>
             ))}
           </ul>
@@ -216,7 +230,7 @@ function Activity({ selected, onSelect }: { selected: string | null; onSelect: (
                   <td><code>{job.job_id.slice(0, 8)}</code></td>
                   <td><span className={`state ${job.execution_state}`}>{job.execution_state}</span></td>
                   <td className="muted">{job.tracking_state}</td>
-                  <td className="muted">{job.created_at}</td>
+                  <td className="muted">{formatTime(job.created_at)}</td>
                 </tr>
               ))}
             </tbody>
@@ -261,7 +275,9 @@ function JobPanel({ jobId }: { jobId: string }) {
           {total > 0 && <progress max={total} value={done} />}
           {total > 0 && <p className="muted">{done} / {total}</p>}
           {job.error && <p className="error">{job.error.code}: {job.error.message}</p>}
-          {job.tracking_run?.run_url && <p><a href={job.tracking_run.run_url} target="_blank" rel="noreferrer">View in MLflow</a></p>}
+          {job.finished_at && <p className="muted">Finished {formatTime(job.finished_at)}</p>}
+          {job.result?.evaluation && <Scores evaluation={job.result.evaluation} />}
+          {TERMINAL.has(job.execution_state) && <UploadStatus job={job} onRetry={refresh} />}
           {active && !job.cancel_requested && (
             <button onClick={() => api.cancel(jobId).then(refresh)}>Cancel</button>
           )}
@@ -274,6 +290,48 @@ function JobPanel({ jobId }: { jobId: string }) {
         ))}
       </ol>
     </div>
+  );
+}
+
+// The official scores of the job's exact best.pt on the validation images.
+function Scores({ evaluation }: { evaluation: NonNullable<NonNullable<JobDetail["result"]>["evaluation"]> }) {
+  const rows: [string, number][] = [["Precision", evaluation.precision], ["Recall", evaluation.recall],
+    ["mAP50", evaluation.map50], ["mAP50-95", evaluation.map50_95]];
+  return (
+    <>
+      <h3>Results</h3>
+      <dl>{rows.flatMap(([name, value]) => [<dt key={`${name}-t`}>{name}</dt>, <dd key={`${name}-d`}>{value.toFixed(3)}</dd>])}</dl>
+    </>
+  );
+}
+
+// Upload state for a finished job: synced with a link to MLflow, or waiting/failed with a Retry button.
+function UploadStatus({ job, onRetry }: { job: JobDetail; onRetry: () => void }) {
+  const [message, setMessage] = useState("");
+  const synced = job.tracking_state === "synced";
+
+  // Ask the backend to upload this job now, then refresh the job.
+  async function retry() {
+    setMessage("Uploading…");
+    try {
+      await api.retrySync(job.job_id);
+      onRetry();
+    } catch (error) { setMessage(describeError(error)); }
+  }
+
+  return (
+    <>
+      <h3>MLflow</h3>
+      <p>
+        Upload: <span className={synced ? "state finished" : "muted"}>{job.tracking_state}</span>
+        {job.tracking_error && <span className="error"> · {job.tracking_error.message}</span>}
+      </p>
+      {synced && job.tracking_run?.run_url && (
+        <p><a className="button" href={job.tracking_run.run_url} target="_blank" rel="noreferrer">View in MLflow</a></p>
+      )}
+      {!synced && <button onClick={retry}>Retry upload</button>}
+      {message && !synced && <p className="muted">{message}</p>}
+    </>
   );
 }
 

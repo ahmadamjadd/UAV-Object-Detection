@@ -1,6 +1,6 @@
 # Team Foxtrot implementation handoff
 
-Updated: **11 November 2026, Asia/Karachi** (H7, Python 3.14 switch).
+Updated: **18 November 2026, Asia/Karachi** (V1 complete).
 
 ## Objective and scope
 
@@ -8,7 +8,8 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Working rules and authorization
 
-- H1, the remaining H3 work, all H4, and all H5 implementation/testing were expressly authorized as milestone-specific exceptions, including agent edits and command execution. On 10 November 2026 the user asked the agent to "implement H6 and then explain" it; the agent treated that as a whole-H6 exception. On 11 November 2026 the user approved switching to Python 3.14 ("yes switch it") and asked the agent to "complete h7". **These exceptions are complete. V1 is not authorized.**
+- H1, the remaining H3 work, all H4, and all H5 implementation/testing were expressly authorized as milestone-specific exceptions, including agent edits and command execution. On 10 November 2026 the user asked the agent to "implement H6 and then explain" it; the agent treated that as a whole-H6 exception. On 11 November 2026 the user approved switching to Python 3.14 ("yes switch it") and asked the agent to "complete h7". **These exceptions are complete.**
+- **Vertical slices (from 18 November 2026):** each slice is split into small substeps. By default the agent gives the user the code (comment above every class/function; long files split into numbered parts with expected line counts), placement and purpose, the user pastes it, and they confirm understanding before the next substep. The agent tests every substep in a scratch copy first. During V1 the user repeatedly asked the agent to apply specific substeps itself ("paste code and complete step", "complete 1.9 fully", "complete the whole v1"); each such request covers only that substep or slice. **V2 is not authorized.**
 - From H6, return to the manual workflow with approximately **4–5 meaningful steps per H milestone**, rather than many very small steps. State the milestone, proposed outcome, purpose, and expected files; wait for explicit approval. Normally supply code for the user to copy and commands for them to run. Do not independently edit source or run tests/builds/scripts/installations/servers unless newly authorized.
 - Agent read-only repository inspection remains allowed: pwd/ls/rg, cat/head/tail/read-only sed, and read-only Git status/diff/log/show. No commits, Git mutations, unrelated refactors, deletion, or dependency changes without explicit instruction.
 - Explain changes and unfamiliar terms simply in chat. For commands requested of the user, provide working directory, purpose, important flags, effects, and expected output; wait for results and explain them. Never request secrets.
@@ -19,7 +20,7 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Current milestone and approval state
 
-**H1–H7 implemented (fixture adapters only). Foundation exit check passed on Python 3.14 (11 November 2026): 197/197 tests, 1,216 protected files unchanged. Awaiting user review and approval for V1. V1–V8 are not implemented.**
+**V1 complete (18 November 2026)** on top of the H1–H7 foundation: real YOLOv8n training from the browser with automatic MLflow upload; the user synced a real job to DagsHub (experiment "Foxtrot Detection", ID 2). Full suite 244/244, 1,216 protected files unchanged. **V2–V8 are not implemented; V2 awaits approval.** V1.8a–V1.10 are uncommitted at this update (V1.1–V1.7 committed as `6075f7f`).
 
 **Python 3.14 switch (11 November 2026):** `pyproject.toml` requires `>=3.14,<3.15`; `.python-version` is 3.14.4; `requirements.txt` regenerated with uv 0.8.22 constrained to the identical 186 H1 versions (only hashes changed; PyPI hashes for all files). The broken 3.12 environment was deleted at the user's request after verification; new `.venv` links to `/usr/bin/python3.14` explicitly. Docs updated. Docker for teammates is planned after project completion, using the same Python 3.14 and lock.
 
@@ -53,7 +54,12 @@ Build Option C: a local Python application serving the browser UI and API, with 
 | H7: frontend/{index.html,vite.config.mjs,tsconfig.json,src/*}, frontend/package.json scripts, src/foxtrot/api/static/ | React shell (Setup, New training, Activity with event-cursor polling), built by Vite into the Python package; pyproject package-data ships it |
 | H7: persistence jobs.list_job_records, datasets.list_datasets | Read helpers for the activity and training screens |
 | H7 tests: tests/test_api.py, tests/test_api_launcher.py | 11 checks: endpoints, host/origin/session refusals, idempotent and field-validated submission, events cursor, cancel, credential privacy/redaction, static serving, real launch → finished job → clean Ctrl+C, port-in-use message |
-| Docs: docs/application.md, docs/adapters.md, docs/execution.md, docs/lifecycle.md, docs/persistence.md, docs/development.md, README.md, implementation_plan.md | Current storage/state/supervisor contracts, development commands, verified scope, and progress |
+| V1.1–V1.3: pipeline/dataset_validation.py, persistence/dataset_import.py, api POST /api/datasets, frontend Datasets.tsx | Dataset checker (images, 5-value labels, class range, box bounds, empty splits, missing-label policy, duplicates, orphans; bounded report); staged copy + fingerprint + atomic publish; invalid datasets not imported |
+| V1.4–V1.6: pipeline/ultralytics_adapter.py, registry.py, persistence/models.py, worker/launcher options, frontend Weights.tsx | Ultralytics trainer/evaluator; private per-job `YOLO_CONFIG_DIR` + `YOLO_OFFLINE`, integrations off; epoch reporting via on_train_epoch_end flag (Ultralytics re-fires on_fit_epoch_end for the final best.pt check with epoch+1); cancel raised from on_train_batch_end; `--pipeline-adapter ultralytics`, `--initialization pretrained|scratch`; weights from official v8.4.0 URL or local file, SHA-256 record, trainer verifies; dataset hash ignores `*.cache` |
+| V1.7–V1.9: tracking/plan.py, execution/outcomes.py, tracking/mlflow_client.py, tracking/sync.py, api/uploads.py, app/launcher/UI | Per-epoch metric points; MLflow client (experiment create/restore, batched params/metrics, artifacts, run URL); sync/check in a separate process with redacted errors and `MLFLOW_DISABLE_TELEMETRY=true`; uploader lock (exit 3 busy); background scheduler 20 s → 600 s back-off; Retry; Test connection; Results/MLflow/local time in Activity |
+| V1.10: pyproject `[project.scripts] foxtrot`, launcher default `--source-checkout` | Wheel (63 files, static UI included, no leaked files) installs and runs the whole workflow outside the checkout |
+| V1 tests | test_dataset_validation (7), test_dataset_import (6), test_api_datasets (4), test_ultralytics_trainer (4), test_ultralytics_evaluator (2), test_pipeline_ultralytics_worker (3), test_model_weights (6), test_tracking_epoch_metrics (4), test_mlflow_sync (4), test_api_tracking_check (2), test_upload_scheduler (4), test_api_job_result (1); one H6 assertion updated (failed runs upload completed epochs) |
+| Docs: docs/training.md, docs/application.md, docs/adapters.md, docs/execution.md, docs/lifecycle.md, docs/persistence.md, docs/development.md, README.md, implementation_plan.md | Current storage/state/supervisor contracts, development commands, verified scope, and progress |
 
 No dependencies, generator/training/split code, DVC files, existing datasets, or model outputs were changed during H3/H4/H5 completion.
 
@@ -81,6 +87,20 @@ No dependencies, generator/training/split code, DVC files, existing datasets, or
 - H1 target: Ubuntu 24.04.4 x86_64, Intel i5-13420H CPU, Python 3.12.3. Node 22.17.0/npm 10.9.2 are development tools. User chose their machine for now; second-machine installation and Docker are deferred. No GPU support has been verified. Keep current dependency pins; Optuna waits until V5.
 
 ## Verification
+
+### V1 completion checks — 18 November 2026
+
+Repository root, `.venv` (CPython 3.14.4), CPU.
+
+| Command / check | Outcome |
+| --- | --- |
+| `.venv/bin/python -B scripts/verify_baseline.py` | **244/244 passed** (101.1s), exit 0; **1,216 protected files unchanged**; no stray `mlruns`/`mlartifacts` |
+| Same suite with a fresh venv containing only the built wheel (third-party libraries borrowed read-only from `.venv`; a second full 6.6 GB copy did not fit the 7.4 GB `/tmp` tmpfs) | **244/244 passed**; `foxtrot` imported from the wheel, not `src/` |
+| Installed `foxtrot` command from `/tmp`: weights from local file, dataset import, real pretrained YOLOv8n 3 epochs at 320, automatic upload to local MLflow | finished + synced in 42 s; precision 0.761, mAP50 0.765, mAP50-95 0.644, identical to the earlier editable run (seed 42) |
+| Real runs on the user's 200-image dataset | scratch 3 epochs: mAP50-95 ≈ 0; pretrained 3 epochs: 0.644 |
+| User-reported | dataset import, training and DagsHub sync of job eab50a55 (run 7c2b843e…) from the browser |
+
+Plan V1 completion checks: real run with resolved settings, metrics, best checkpoint, evaluation and dataset identity in MLflow (tests + DagsHub); repeated clicks do not duplicate (submission key); reopen preserves progress (event cursor); cancellation stops the owned execution (tests); tracking failure keeps local results and is not shown as synced (tests). **Second-member installation not performed**: deferred by the user to a Docker image after project completion.
 
 ### Agent-executed H7 checks — 11 November 2026
 
@@ -186,24 +206,17 @@ totals; fixture checkpoint bytes are not real models.
 
 ## Repository state and changes to preserve
 
-Base: `349954e` (Implementing software) on `main`. Foundation commit: `f60b96d` on
-`foundation-h4-h7` (GitHub). Do not restore deleted legacy files or reset source
-to the older H1 revision.
+Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundation H4–H7 + Python 3.14, `d36695a` plan/status, `6075f7f` V1.1–V1.7. V1.8a–V1.10 and this update are uncommitted. `main` (tracking DagsHub `origin`) is unchanged and not merged.
 
 - Issue 3–7 corrections: sorted/seeded generation, square-size and glyph validation, corrected geometry/boxes, bounded background preflight preserving old outputs, lightweight shared class metadata and no training-import .env reads.
 - Keep n as images per class and generator size separate from training imgsz. Preserve all six original regression files.
 - Legacy `src/train.py`, `src/test.py`, `src/split_dataset.py`, `src/class_names.py`, generator, params and DVC files are unchanged and remain the CLI path.
-- The built interface in `src/foxtrot/api/static/` is committed deliberately; rebuild it with `cd frontend && npm run build` after frontend changes.
+- The built interface in `src/foxtrot/api/static/` is committed deliberately; rebuild it with `cd frontend && npm run build` after frontend changes, and restart the launcher after backend changes.
+- User workspace `~/foxtrot-workspace-v1` holds the user's real data (dataset `foxtrot-shapes`, weights, DagsHub destination with private credentials, synced jobs); do not modify it without asking.
 - No applicable AGENTS.md was found in the repository or ancestor chain during inspection.
 
 ## Exact next proposed action
 
-Foundation is complete. Wait for explicit user approval to start **V1 — train an
-existing dataset and open its MLflow result**. V1 scope (plan section 3): real
-Ultralytics trainer/evaluator adapter behind the H6 contracts, registering an
-existing local dataset from the browser, real MLflow `TrackingClient` behind the
-H6 outbox, epoch-level metrics, and the "View in MLflow" result link. Also decide
-with the user whether to merge `foundation-h4-h7` into `main` first.
+V1 is complete. Offer to commit and push V1.8a–V1.10 plus this update to `foundation-h4-h7`. Then wait for explicit approval to start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
 
-Open items: GPU execution, other operating systems, and Docker remain unverified;
-ambiguous ownership remains held for explicit V7 recovery; one uploader at a time.
+Open items: GPU, other operating systems and Docker unverified; second-machine install deferred to Docker; ambiguous ownership remains held for V7 recovery; uploads only run while Foxtrot is open.
