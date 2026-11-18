@@ -19,6 +19,8 @@ from .workspace import initialize_workspace
 DATASET_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}")
 MANIFEST = "manifest.json"
 DATA = "data"
+# YOLO writes label caches (e.g. train/labels.cache) into datasets; they are not data.
+IGNORED_SUFFIXES = {".cache"}
 
 
 class DatasetUnavailable(ValueError):
@@ -59,7 +61,7 @@ def dataset_content_sha256(data_root: Path) -> str:
     for path in sorted(data_root.rglob("*"), key=lambda item: item.relative_to(data_root).as_posix()):
         if path.is_symlink():
             raise DatasetUnavailable("Datasets must not contain symbolic links")
-        if path.is_file():
+        if path.is_file() and path.suffix not in IGNORED_SUFFIXES:
             digest, size = fingerprint(path)
             relative = path.relative_to(data_root).as_posix()
             listing.update(f"{relative}\0{size}\0{digest}\n".encode("utf-8"))

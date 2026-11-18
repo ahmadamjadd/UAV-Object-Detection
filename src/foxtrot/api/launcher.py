@@ -39,8 +39,8 @@ def worker_stop_seconds(limits: SupervisorLimits = SupervisorLimits()) -> float:
 def start_worker(arguments) -> subprocess.Popen:
     command = [sys.executable, "-B", "-m", "foxtrot.execution.worker",
                "--workspace", str(arguments.workspace), "--source-checkout", str(arguments.source_checkout)]
-    command += (["--pipeline-adapter", arguments.pipeline_adapter] if arguments.pipeline_adapter
-                else ["--fixture"])
+    command += (["--pipeline-adapter", arguments.pipeline_adapter, "--initialization", arguments.initialization]
+                if arguments.pipeline_adapter else ["--fixture"])
     if arguments.runtime_directory:
         command += ["--runtime-directory", str(arguments.runtime_directory)]
     # Own session: a terminal Ctrl+C reaches the launcher, which then stops the
@@ -64,8 +64,10 @@ def main(argv=None) -> int:
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--source-checkout", required=True, type=Path)
     parser.add_argument("--port", type=int, default=8765)
-    parser.add_argument("--pipeline-adapter", choices=("fixture",),
+    parser.add_argument("--pipeline-adapter", choices=("fixture", "ultralytics"),
                         help="Worker runs this adapter; omit to run H5 infrastructure fixtures")
+    parser.add_argument("--initialization", choices=("pretrained", "scratch"), default="pretrained",
+                        help="ultralytics: start from workspace pretrained weights or from random weights")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser tab")
     parser.add_argument("--no-worker", action="store_true", help="Serve the website/API only")
     parser.add_argument("--runtime-directory", type=Path, help=argparse.SUPPRESS)  # isolated tests only

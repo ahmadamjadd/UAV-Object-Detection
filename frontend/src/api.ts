@@ -39,6 +39,24 @@ export type Capabilities = {
 
 export type Dataset = { dataset_id: string; class_names: string[]; validation_status: string };
 
+export type DatasetIssue = { split: string; file: string | null; line: number | null; message: string };
+
+export type DatasetReport = {
+  valid: boolean;
+  errors: DatasetIssue[];
+  warnings: DatasetIssue[];
+  error_count: number;
+  warning_count: number;
+  splits: Record<string, { images: number; labelled_images: number; missing_labels: number;
+    objects_per_class: Record<string, number> }>;
+};
+
+export type DatasetImportResult = { imported: boolean; dataset: Dataset | null; report: DatasetReport };
+
+export type ModelWeights = {
+  model_id: string; status: "installed" | "missing" | "changed"; sha256: string | null; size_bytes: number | null;
+};
+
 export type Destination = {
   destination_id: string;
   kind: string;
@@ -81,6 +99,9 @@ export const api = {
   destinations: () => request<Destination[]>("GET", "/api/tracking/destinations"),
   saveDestination: (value: Record<string, unknown>) =>
     request<Destination>("PUT", `/api/tracking/destinations/${encodeURIComponent(String(value.destination_id))}`, value),
+  importDataset: (value: Record<string, unknown>) => request<DatasetImportResult>("POST", "/api/datasets", value),
+  models: () => request<ModelWeights[]>("GET", "/api/models"),
+  installModel: (id: string) => request<ModelWeights>("POST", `/api/models/${encodeURIComponent(id)}/install`),
   jobs: () => request<JobView[]>("GET", "/api/jobs"),
   job: (id: string) => request<JobDetail>("GET", `/api/jobs/${id}`),
   events: (id: string, after: number) => request<JobEvent[]>("GET", `/api/jobs/${id}/events?after=${after}`),

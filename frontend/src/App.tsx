@@ -2,8 +2,10 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   api, Capabilities, Dataset, describeError, Destination, JobDetail, JobEvent, JobView, TERMINAL,
 } from "./api";
+import { Datasets } from "./Datasets";
+import { Weights } from "./Weights";
 
-type Section = "setup" | "train" | "activity";
+type Section = "setup" | "datasets" | "train" | "activity";
 
 export function App() {
   const [section, setSection] = useState<Section>("activity");
@@ -25,15 +27,16 @@ export function App() {
           <span className="badge">Fixture mode: no real model training yet</span>
         )}
         <nav>
-          {(["setup", "train", "activity"] as Section[]).map((name) => (
+          {(["setup", "datasets", "train", "activity"] as Section[]).map((name) => (
             <button key={name} className={section === name ? "active" : ""} onClick={() => setSection(name)}>
-              {{ setup: "Setup", train: "New training", activity: "Activity" }[name]}
+              {{ setup: "Setup", datasets: "Datasets", train: "New training", activity: "Activity" }[name]}
             </button>
           ))}
         </nav>
       </header>
       <main>
         {section === "setup" && <Setup capabilities={capabilities} />}
+        {section === "datasets" && <Datasets />}
         {section === "train" && (
           <TrainingForm capabilities={capabilities}
             onSubmitted={(id) => { setSelected(id); setSection("activity"); }} />
@@ -103,6 +106,7 @@ function Setup({ capabilities }: { capabilities: Capabilities | null }) {
         </form>
         {message && <p className="muted">{message}</p>}
       </div>
+      <Weights />
     </section>
   );
 }

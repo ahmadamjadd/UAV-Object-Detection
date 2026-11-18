@@ -77,7 +77,9 @@ def main() -> int:
     parser.add_argument("--source-checkout", required=True, type=Path)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fixture", action="store_true", help="Explicitly run H5 infrastructure fixtures; no YOLO training")
-    mode.add_argument("--pipeline-adapter", choices=("fixture",), help="Run a code-registered H6 pipeline adapter on registered datasets")
+    mode.add_argument("--pipeline-adapter", choices=("fixture", "ultralytics"), help="Run a code-registered pipeline adapter on registered datasets")
+    parser.add_argument("--initialization", choices=("pretrained", "scratch"), default="pretrained",
+                        help="ultralytics: start from workspace pretrained weights or from random weights")
     parser.add_argument("--fixture-settings", type=Path, help="Trusted local fixture settings JSON; never job-supplied commands")
     parser.add_argument("--pipeline-settings", type=Path, help="Trusted local PipelineSettings JSON for --pipeline-adapter")
     parser.add_argument("--runtime-directory", type=Path, help="Private lease directory; use a separate path only for isolated tests")
@@ -96,7 +98,8 @@ def main() -> int:
                                   if arguments.fixture_settings else FixtureSettings())}
         else:
             pipeline = (PipelineSettings.model_validate_json(arguments.pipeline_settings.read_bytes())
-                        if arguments.pipeline_settings else PipelineSettings(adapter=arguments.pipeline_adapter))
+                        if arguments.pipeline_settings else PipelineSettings(
+                            adapter=arguments.pipeline_adapter, ultralytics_initialization=arguments.initialization))
             if pipeline.adapter != arguments.pipeline_adapter:
                 raise ValueError("Pipeline settings name a different adapter")
             runner = {"pipeline": pipeline}

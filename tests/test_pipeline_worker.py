@@ -115,7 +115,10 @@ class PipelineWorkerTests(unittest.TestCase):
         self.assertIsNone(result.checkpoint)
         self.assertIn("epoch 2", result.error_message)
         operations = self.operations(job)
-        self.assertNotIn("log_metrics", [o.operation for o in operations])
+        # The completed epochs are still uploaded; there is no official evaluation for a failed run.
+        metrics = next(o for o in operations if o.operation == "log_metrics").payload["metrics"]
+        self.assertEqual(sorted({p["step"] for p in metrics}), [1, 2])
+        self.assertFalse([p for p in metrics if p["key"].startswith("eval/")])
         self.assertEqual(operations[-1].payload, {"status": "FAILED"})
 
     def test_cancellation_reaches_the_adapter_and_is_queued_as_killed(self):

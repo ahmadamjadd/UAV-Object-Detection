@@ -4,6 +4,7 @@ from pathlib import Path, PurePosixPath
 
 from foxtrot.config.result import JobResult
 from foxtrot.persistence.artifacts import record_job_artifact
+from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.files import job_file, sync_directory, write_new_text
 from foxtrot.persistence.jobs import JobClaim, JobRecord
 from foxtrot.persistence.tracking import enqueue_tracking
@@ -41,6 +42,17 @@ def accept_pipeline_result(
     return result
 
 
+# Every per-epoch progress update this job saved, in order (read page by page).
+def _epoch_progress(workspace: Path, checkout: Path, job_id: str) -> list[dict]:
+    payloads, cursor = [], 0
+    while True:
+        page = read_job_events(workspace, checkout, job_id, after_sequence=cursor, limit=1000)
+        if not page:
+            return payloads
+        cursor = page[-1].sequence
+        payloads += [event.payload for event in page if event.event_type == "progress" and "epoch" in event.payload]
+
+
 def record_pipeline_outcome(
     workspace: Path, checkout: Path, claim: JobClaim, request: PipelineExecutionRequest,
     record: JobRecord, pipeline: PipelineResult | None,
@@ -69,6 +81,7 @@ def record_pipeline_outcome(
         adapter=request.pipeline.adapter, fixture=get_adapters(request.pipeline).fixture,
         dataset=request.dataset, pipeline=pipeline,
         artifact_names=names | {"job-result", "summary"},
+        epoch_progress=_epoch_progress(workspace, checkout, claim.job_id),
     )
     enqueue_tracking(workspace, checkout, claim.job_id, plan)
     return result

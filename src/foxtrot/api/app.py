@@ -8,6 +8,7 @@ from dataclasses import asdict
 import importlib.metadata
 from pathlib import Path
 import typing
+import urllib.request
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -20,8 +21,10 @@ from foxtrot.config.training import TrainingSettings
 from foxtrot.config.snapshot import resolve_job
 from foxtrot.persistence.commands import request_cancel
 from foxtrot.persistence.database import DATABASE_SCHEMA_VERSION, initialize_database
-from foxtrot.persistence.datasets import list_datasets
+from foxtrot.persistence.dataset_import import import_dataset
+from foxtrot.persistence.datasets import DatasetUnavailable, list_datasets
 from foxtrot.persistence.events import read_job_events
+from foxtrot.persistence.models import WeightsError, install_weights, list_weights
 from foxtrot.persistence.jobs import (
     JobRecord, create_recorded_job, get_job_record, list_job_records, load_job_configurations,
 )
@@ -39,6 +42,18 @@ class JobSubmission(BaseModel):
 
     submission_key: str = Field(min_length=8, max_length=200, pattern=r"^\S+$")
     request: dict[str, typing.Any]
+
+
+# What the browser sends to import a dataset folder from this computer.
+class DatasetImport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    source: str = Field(min_length=1, max_length=4096)
+    dataset_id: str = Field(min_length=1, max_length=128)
+    class_names: list[str] = Field(min_length=1, max_length=1000)
+    train_images_ref: str = "train/images"
+    validation_images_ref: str = "val/images"
+    missing_labels: typing.Literal["background", "error"] = "background"
 
 
 def _choices(model, field: str) -> list[str]:
@@ -72,6 +87,7 @@ def create_app(
     app.state.port, app.state.session_token = port, session_token
     app.state.pipeline_adapter = pipeline_adapter
     app.state.settings = SettingsStore(workspace_root, source_checkout)
+    app.state.weights_opener = urllib.request.urlopen  # replaced in tests: no real downloads
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOOPBACK_HOSTS))
     workspace, checkout = app.state.workspace, app.state.checkout
 
@@ -109,7 +125,7 @@ def create_app(
             "devices": _choices(TrainingSettings, "device"),
             "pipeline_adapters": _choices(PipelineSettings, "adapter"),
             "active_pipeline_adapter": app.state.pipeline_adapter,
-            "real_training": False,  # becomes True with the V1 Ultralytics adapter
+            "real_training": app.state.pipeline_adapter == "ultralytics",
             "tracking_destinations": [d["destination_id"] for d in app.state.settings.destinations()],
         }
 
@@ -125,6 +141,11 @@ def create_app(
     @app.get("/api/datasets")
     def datasets():
         return [m.model_dump(mode="json") for m in list_datasets(workspace, checkout)]
+
+    # Which pretrained weights are installed (and unchanged) in this workspace.
+    @app.get("/api/models")
+    def models():
+        return list_weights(workspace, checkout)
 
     @app.get("/api/tracking/destinations")
     def destinations():
@@ -181,6 +202,32 @@ def create_app(
         if update.destination_id != destination_id:
             raise HTTPException(status_code=422, detail="Destination ID must match the URL")
         return app.state.settings.save_destination(update)
+
+    # Download the official pretrained weights into the workspace and record their fingerprint.
+    @app.post("/api/models/{model_id}/install", dependencies=guarded)
+    def install_model(model_id: str):
+        try:
+            record = install_weights(workspace, checkout, model_id, opener=app.state.weights_opener)
+        except WeightsError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"model_id": record.model_id, "status": "installed",
+                "sha256": record.sha256, "size_bytes": record.size_bytes}
+
+    # Check and import a dataset folder; an invalid dataset returns its report without importing.
+    @app.post("/api/datasets", dependencies=guarded)
+    def import_local_dataset(body: DatasetImport):
+        try:
+            dataset, report = import_dataset(
+                workspace, checkout, source=body.source.strip(), dataset_id=body.dataset_id.strip(),
+                class_names=tuple(name.strip() for name in body.class_names),
+                train_images_ref=body.train_images_ref, validation_images_ref=body.validation_images_ref,
+                missing_labels=body.missing_labels,
+            )
+        except (DatasetUnavailable, ValueError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        return {"imported": dataset is not None,
+                "dataset": dataset.metadata.model_dump(mode="json") if dataset else None,
+                "report": report.model_dump(mode="json")}
 
     # ------------------------------------------------------------ interface
 
