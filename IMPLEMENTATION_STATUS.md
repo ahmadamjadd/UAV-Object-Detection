@@ -20,7 +20,7 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Current milestone and approval state
 
-**V1 complete (18 November 2026)** on top of the H1–H7 foundation: real YOLOv8n training from the browser with automatic MLflow upload; the user synced a real job to DagsHub (experiment "Foxtrot Detection", ID 2). Full suite 244/244, 1,216 protected files unchanged. **V2–V8 are not implemented; V2 awaits approval.** V1.8a–V1.10 are uncommitted at this update (V1.1–V1.7 committed as `6075f7f`).
+**V1 complete (18 November 2026)** on top of the H1–H7 foundation: real YOLOv8n training from the browser with automatic MLflow upload; the user synced a real job to DagsHub (experiment "Foxtrot Detection", ID 2). Full suite 244/244, 1,216 protected files unchanged. **V2–V8 are not implemented; V2 awaits approval.** V1.1–V1.7 committed as `6075f7f`, V1.8–V1.10 and docs as `dc7222a`, both pushed to GitHub.
 
 **Python 3.14 switch (11 November 2026):** `pyproject.toml` requires `>=3.14,<3.15`; `.python-version` is 3.14.4; `requirements.txt` regenerated with uv 0.8.22 constrained to the identical 186 H1 versions (only hashes changed; PyPI hashes for all files). The broken 3.12 environment was deleted at the user's request after verification; new `.venv` links to `/usr/bin/python3.14` explicitly. Docs updated. Docker for teammates is planned after project completion, using the same Python 3.14 and lock.
 
@@ -206,7 +206,7 @@ totals; fixture checkpoint bytes are not real models.
 
 ## Repository state and changes to preserve
 
-Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundation H4–H7 + Python 3.14, `d36695a` plan/status, `6075f7f` V1.1–V1.7. V1.8a–V1.10 and this update are uncommitted. `main` (tracking DagsHub `origin`) is unchanged and not merged.
+Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundation H4–H7 + Python 3.14, `d36695a` plan/status, `6075f7f` V1.1–V1.7, `dc7222a` V1.8–V1.10 + docs (V1 complete); all pushed to GitHub. `main` (tracking DagsHub `origin`) is unchanged and not merged.
 
 - Issue 3–7 corrections: sorted/seeded generation, square-size and glyph validation, corrected geometry/boxes, bounded background preflight preserving old outputs, lightweight shared class metadata and no training-import .env reads.
 - Keep n as images per class and generator size separate from training imgsz. Preserve all six original regression files.
@@ -217,6 +217,6 @@ Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundati
 
 ## Exact next proposed action
 
-V1 is complete. Offer to commit and push V1.8a–V1.10 plus this update to `foundation-h4-h7`. Then wait for explicit approval to start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
+V1 is complete and pushed. Wait for explicit approval to start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
 
 Open items: GPU, other operating systems and Docker unverified; second-machine install deferred to Docker; ambiguous ownership remains held for V7 recovery; uploads only run while Foxtrot is open.
