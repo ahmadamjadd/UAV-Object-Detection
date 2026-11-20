@@ -1,6 +1,6 @@
 # Team Foxtrot implementation handoff
 
-Updated: **20 November 2026, Asia/Karachi** (V2 and V3 complete, not yet committed).
+Updated: **20 November 2026, Asia/Karachi** (V2 and V3 complete, committed and pushed).
 
 ## Objective and scope
 
@@ -20,9 +20,9 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Current milestone and approval state
 
-**V3 complete (20 November 2026):** 20-model registry, per-job start mode with traceable starting weights, 38 validated training settings forwarded and logged, coverage report, schema-built form with JSON editor; 267/267 tests, 1,216 protected files unchanged; live runs verified. Uncommitted together with V2. **V4–V8 not implemented; V4 awaits approval.**
+**V3 complete (20 November 2026):** 20-model registry, per-job start mode with traceable starting weights, 38 validated training settings forwarded and logged, coverage report, schema-built form with JSON editor; 267/267 tests, 1,216 protected files unchanged; live runs verified. Committed with V2 as `1dfd3e6` and pushed to GitHub (`foundation-h4-h7`). **V4–V8 not implemented; V4 awaits approval.**
 
-**V2 complete (19 November 2026):** generate → preview → split → train → MLflow from the browser; 259/259 tests, 1,216 protected files unchanged; live run verified. Files are uncommitted. **V3–V8 not implemented; V3 awaits approval.**
+**V2 complete (19 November 2026):** generate → preview → split → train → MLflow from the browser; 259/259 tests, 1,216 protected files unchanged; live run verified. Committed in `1dfd3e6`.
 
 **V1 complete (18 November 2026)** on top of the H1–H7 foundation: real YOLOv8n training from the browser with automatic MLflow upload; the user synced a real job to DagsHub (experiment "Foxtrot Detection", ID 2). Full suite 244/244, 1,216 protected files unchanged. **V2–V8 are not implemented; V2 awaits approval.** V1.1–V1.7 committed as `6075f7f`, V1.8–V1.10 and docs as `dc7222a`, both pushed to GitHub.
 
@@ -266,7 +266,7 @@ Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundati
 
 ## Exact next proposed action
 
-V2 and V3 are complete but **not committed**: ask the user whether to commit/push them (suggested as two commits). Then wait for explicit approval to start **V4 — retrieve versioned datasets and evaluate labeled real images** (plan section 3), proposed as 3–4 substeps.
+V2 and V3 are committed together as `1dfd3e6` (one commit, because shared files such as app.py, api.ts and the built UI changed in both) and pushed to GitHub. Wait for explicit approval to start **V4 — retrieve versioned datasets and evaluate labeled real images** (plan section 3), proposed as 3–4 substeps.
 
 Previous next action (done): start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
 
