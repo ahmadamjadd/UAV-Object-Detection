@@ -1,8 +1,9 @@
 # H3 local persistence
 
-H3 supplies storage primitives for the later API and worker. It does not launch
-training, provide HTTP endpoints, implement the full state machine, record
-progress events, or contact MLflow.
+H3 supplies storage primitives for the later API and worker. H4 extends these
+with states, durable events, and process reconciliation; see
+[lifecycle.md](lifecycle.md). Neither launches training, provides HTTP endpoints,
+or contacts MLflow.
 
 ## Files and database have separate responsibilities
 
@@ -13,7 +14,7 @@ The database stores artifact paths and hashes rather than model or image bytes.
 ```text
 workspace/                       outside the source checkout
 ├── .foxtrot-workspace            workspace format marker
-├── app.sqlite                   schema version 3
+├── app.sqlite                   schema version 5, including progress/cancellation
 ├── settings/
 ├── models/
 ├── datasets/
@@ -98,11 +99,13 @@ A database constraint also permits at most one `preparing`, `training`, or
 Another claimant returns `None` if the queue is empty or a job is already active.
 Upload state does not reserve the training slot.
 
-The returned claim token and timestamp are durable reservation metadata. They
-do not prove a process is alive. Reopening storage preserves the claim and never
-automatically resets/requeues it. H4 will reconcile stale states; H5 will own
-actual worker/training processes. State transitions and durable events beyond
-the initial claim are not implemented in H3.
+The claim token and timestamp are durable reservation metadata. H4 also records
+the calling owner's PID and birth identity, and commits a preparing event with
+the claim. Reopening storage preserves the claim and never automatically
+resets/requeues it. H4 explicitly reconciles stopped/uncertain owners; recovery
+holds block new claims even when the old job is interrupted. H5's fixture worker
+implements process ownership/cancellation; see [execution.md](execution.md).
+Real training remains later work.
 
 ## Artifact identity
 
@@ -121,6 +124,8 @@ training and evaluation remain later integrations.
 
 - Version 1: initial empty database. Version 2: job records. Version 3:
   configuration hashes, claim metadata, one-active-job constraint, and artifacts.
+  Version 4: durable events/errors, process identities, and recovery holds.
+  Version 5: cancellation requests, observed exit codes, and final timestamps.
 - Each missing migration runs in order inside one transaction. Unsupported newer
   versions and unrelated unversioned databases are rejected. A migration failure
   rolls back schema changes and preserves existing records.
@@ -163,6 +168,6 @@ with temporary caches and protected-file hash comparisons. It checks installed
 package imports outside the checkout too. Nonzero exit means verification failed;
 `OK` and unchanged protected hashes are the expected successful outcome.
 
-Verified environment remains the H1 Ubuntu x86_64 / Python 3.12 CPU target.
+Verified environment: Ubuntu x86_64 CPU target, Python 3.14 since 11 November 2026 (H1 used 3.12).
 Other operating systems, GPU execution, Docker, a real website, and tracking
 uploads are outside this evidence.

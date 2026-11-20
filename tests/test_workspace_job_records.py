@@ -72,7 +72,7 @@ class RecordedJobTests(unittest.TestCase):
         self.assertEqual(resolved["training"]["batch_size"], 16)
         self.assertEqual(
             row,
-            (job.name, "queued", "pending", 0),
+            (job.name, "queued", "pending", 1),
         )
 
     def test_records_two_jobs_with_separate_configurations(self):

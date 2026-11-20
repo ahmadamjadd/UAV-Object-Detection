@@ -28,6 +28,16 @@ class DatasetMetadata(BaseModel):
 
     validation_status: Literal["pending", "valid", "invalid"] = "pending"
 
+    # V4: what the dataset is for. "training" datasets train models; "validation" and
+    # "test" hold labeled real images that only score models. Test data is the final,
+    # held-out check: it is never trained on and never offered as a tuning objective.
+    role: Literal["training", "validation", "test"] = "training"
+
+    # V4: final test data is reserved for the last, honest check, so a tuning study may
+    # never use it as its objective. Validation data may be used.
+    def can_be_tuning_objective(self) -> bool:
+        return self.role != "test"
+
     @field_validator("class_names")
     @classmethod
     def check_class_names(cls, names: tuple[str, ...]) -> tuple[str, ...]:

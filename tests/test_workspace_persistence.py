@@ -66,7 +66,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(record.tracking_state, "pending")
         self.assertEqual(record.claim_token, claim.claim_token)
         self.assertIsNotNone(record.claimed_at)
-        self.assertEqual(record.last_event_sequence, 0)
+        self.assertEqual(record.last_event_sequence, 2)
         self.assertEqual(json.loads(claim.configurations.resolved_json)["training"]["epochs"], 5)
         self.assertIsNone(claim_next_job(self.workspace, self.checkout))
 

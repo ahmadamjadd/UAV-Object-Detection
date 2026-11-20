@@ -9,7 +9,10 @@
   },
   "packageManager": "npm@10.9.2",
   "scripts": {
-    "check": "node ../scripts/verify_frontend.mjs"
+    "check": "node ../scripts/verify_frontend.mjs",
+    "typecheck": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.json && vite build",
+    "dev": "vite"
   },
   "overrides": {
     "rollup": "4.60.4"
