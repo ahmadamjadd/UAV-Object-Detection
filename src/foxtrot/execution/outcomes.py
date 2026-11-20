@@ -1,9 +1,11 @@
 """Parent-side acceptance of adapter results; the child is never trusted blindly."""
 
+import json
 from pathlib import Path, PurePosixPath
 
 from foxtrot.config.result import JobResult
 from foxtrot.persistence.artifacts import record_job_artifact
+from foxtrot.persistence.dataset_generation import load_generation_provenance
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.files import job_file, sync_directory, write_new_text
 from foxtrot.persistence.jobs import JobClaim, JobRecord
@@ -76,12 +78,20 @@ def record_pipeline_outcome(
     sync_directory(claim.directory)
     record_job_artifact(workspace, checkout, claim.job_id, "job-result", "result.json")
     names = {"checkpoint", "pipeline-result", "data-yaml"} if finished else set()
+    # A generated dataset's recipe/split record travels with the job to MLflow (V2).
+    provenance = load_generation_provenance(request.dataset)
+    if provenance is not None:
+        write_new_text(claim.directory / "dataset-provenance.json", json.dumps(provenance, indent=2))
+        sync_directory(claim.directory)
+        record_job_artifact(workspace, checkout, claim.job_id, "dataset-provenance", "dataset-provenance.json")
+        names.add("dataset-provenance")
     plan = build_tracking_plan(
         result=result, resolved=request.resolved, resolved_sha256=request.resolved_sha256,
         adapter=request.pipeline.adapter, fixture=get_adapters(request.pipeline).fixture,
         dataset=request.dataset, pipeline=pipeline,
         artifact_names=names | {"job-result", "summary"},
         epoch_progress=_epoch_progress(workspace, checkout, claim.job_id),
+        dataset_provenance=provenance,
     )
     enqueue_tracking(workspace, checkout, claim.job_id, plan)
     return result

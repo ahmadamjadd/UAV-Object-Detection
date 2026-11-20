@@ -1,17 +1,20 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
-  api, Capabilities, Dataset, describeError, Destination, formatTime, JobDetail, JobEvent, JobView, TERMINAL,
+  api, Capabilities, describeError, Destination, formatTime, JobDetail, JobEvent, JobView, TERMINAL,
 } from "./api";
 import { Datasets } from "./Datasets";
+import { Generate } from "./Generate";
+import { TrainingForm } from "./Training";
 import { Weights } from "./Weights";
 
-type Section = "setup" | "datasets" | "train" | "activity";
+type Section = "setup" | "datasets" | "generate" | "train" | "activity";
 
 export function App() {
   const [section, setSection] = useState<Section>("activity");
   const [healthy, setHealthy] = useState<boolean | null>(null);
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  const [trainDataset, setTrainDataset] = useState<string | null>(null);
 
   useEffect(() => {
     api.health().then(() => setHealthy(true), () => setHealthy(false));
@@ -27,9 +30,9 @@ export function App() {
           <span className="badge">Fixture mode: no real model training yet</span>
         )}
         <nav>
-          {(["setup", "datasets", "train", "activity"] as Section[]).map((name) => (
+          {(["setup", "datasets", "generate", "train", "activity"] as Section[]).map((name) => (
             <button key={name} className={section === name ? "active" : ""} onClick={() => setSection(name)}>
-              {{ setup: "Setup", datasets: "Datasets", train: "New training", activity: "Activity" }[name]}
+              {{ setup: "Setup", datasets: "Datasets", generate: "Generate", train: "New training", activity: "Activity" }[name]}
             </button>
           ))}
         </nav>
@@ -37,8 +40,11 @@ export function App() {
       <main>
         {section === "setup" && <Setup capabilities={capabilities} />}
         {section === "datasets" && <Datasets />}
+        {section === "generate" && (
+          <Generate onTrain={(id) => { setTrainDataset(id); setSection("train"); }} />
+        )}
         {section === "train" && (
-          <TrainingForm capabilities={capabilities}
+          <TrainingForm capabilities={capabilities} initialDataset={trainDataset}
             onSubmitted={(id) => { setSelected(id); setSection("activity"); }} />
         )}
         {section === "activity" && <Activity selected={selected} onSelect={setSelected} />}
@@ -121,80 +127,6 @@ function Setup({ capabilities }: { capabilities: Capabilities | null }) {
         {message && <p className="muted">{message}</p>}
       </div>
       <Weights />
-    </section>
-  );
-}
-
-function TrainingForm({ capabilities, onSubmitted }: {
-  capabilities: Capabilities | null; onSubmitted: (id: string) => void;
-}) {
-  const [datasets, setDatasets] = useState<Dataset[]>([]);
-  const [defaults, setDefaults] = useState<Record<string, any>>({});
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submissionKey = useRef<string | null>(null);
-
-  useEffect(() => {
-    api.datasets().then(setDatasets, (e) => setError(describeError(e)));
-    // Defaults come from the backend schema, not a separate frontend list.
-    api.schemas().then((s) => setDefaults(s.job?.$defs?.TrainingSettings?.properties ?? {}));
-  }, []);
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const number = (name: string) => Number(form.get(name));
-    // Reuse one idempotency key until success, so a retry never duplicates a job.
-    submissionKey.current ??= crypto.randomUUID();
-    setBusy(true);
-    setError("");
-    try {
-      const job = await api.submit(submissionKey.current, {
-        dataset_id: form.get("dataset_id"),
-        model_id: form.get("model_id"),
-        tracking_destination_id: form.get("tracking_destination_id"),
-        training: {
-          epochs: number("epochs"), batch_size: number("batch_size"),
-          image_size: number("image_size"), seed: number("seed"), device: form.get("device"),
-        },
-      });
-      submissionKey.current = null;
-      onSubmitted(job.job_id);
-    } catch (e) { setError(describeError(e)); } finally { setBusy(false); }
-  }
-
-  const field = (name: string, label: string) => (
-    <label>{label}<input name={name} type="number" min={name === "seed" ? 0 : 1} required
-      key={`${name}-${defaults[name]?.default}`} defaultValue={defaults[name]?.default} /></label>
-  );
-
-  return (
-    <section className="card narrow">
-      <h2>New training</h2>
-      {datasets.length === 0 && <p className="muted">No datasets are registered in this workspace yet.</p>}
-      <form onSubmit={submit} className="form">
-        <label>Dataset<select name="dataset_id" required>
-          {datasets.map((d) => <option key={d.dataset_id} value={d.dataset_id}>
-            {d.dataset_id} ({d.class_names.join(", ")})</option>)}
-        </select></label>
-        <label>Model<select name="model_id">
-          {(capabilities?.models ?? []).map((m) => <option key={m}>{m}</option>)}
-        </select></label>
-        {field("epochs", "Epochs")}
-        {field("batch_size", "Batch size")}
-        {field("image_size", "Image size")}
-        {field("seed", "Seed")}
-        <label>Device<select name="device">
-          {(capabilities?.devices ?? []).map((d) => <option key={d}>{d}</option>)}
-        </select></label>
-        <label>Tracking destination<input name="tracking_destination_id" required
-          list="destinations" defaultValue={capabilities?.tracking_destinations[0] ?? "local"} />
-          <datalist id="destinations">
-            {(capabilities?.tracking_destinations ?? []).map((d) => <option key={d} value={d} />)}
-          </datalist></label>
-        <button type="submit" disabled={busy || datasets.length === 0}>{busy ? "Submitting…" : "Start training"}</button>
-      </form>
-      {error && <p className="error">{error}</p>}
     </section>
   );
 }

@@ -17,8 +17,9 @@ class PipelineSettings(BaseModel):
     adapter: Literal["fixture", "ultralytics"]
     fixture_epoch_seconds: float = Field(default=0.05, ge=0.0, le=60.0, allow_inf_nan=False)
     fixture_fail_at_epoch: int | None = Field(default=None, ge=1)
-    ultralytics_initialization: Literal["pretrained", "scratch"] = "pretrained"
-    ultralytics_workers: int = Field(default=2, ge=0, le=16)
+    # "job": each job's own start mode (V3 default); "pretrained"/"scratch": force it for every job.
+    ultralytics_initialization: Literal["job", "pretrained", "scratch"] = "job"
+    ultralytics_workers: int | None = Field(default=None, ge=0, le=16)  # None: the job's own setting
 
 
 # The trainer and evaluator a job will use, and whether they are only a fixture.

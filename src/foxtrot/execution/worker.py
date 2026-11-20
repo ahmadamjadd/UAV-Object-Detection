@@ -78,8 +78,9 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--fixture", action="store_true", help="Explicitly run H5 infrastructure fixtures; no YOLO training")
     mode.add_argument("--pipeline-adapter", choices=("fixture", "ultralytics"), help="Run a code-registered pipeline adapter on registered datasets")
-    parser.add_argument("--initialization", choices=("pretrained", "scratch"), default="pretrained",
-                        help="ultralytics: start from workspace pretrained weights or from random weights")
+    parser.add_argument("--initialization", choices=("job", "pretrained", "scratch"), default="job",
+                        help="ultralytics: 'job' (default) uses each job's own choice; "
+                             "'pretrained'/'scratch' force one mode for every job")
     parser.add_argument("--fixture-settings", type=Path, help="Trusted local fixture settings JSON; never job-supplied commands")
     parser.add_argument("--pipeline-settings", type=Path, help="Trusted local PipelineSettings JSON for --pipeline-adapter")
     parser.add_argument("--runtime-directory", type=Path, help="Private lease directory; use a separate path only for isolated tests")

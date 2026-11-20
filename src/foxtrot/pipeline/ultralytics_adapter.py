@@ -15,8 +15,11 @@ from typing import Literal
 
 from foxtrot.config.checkpoint import CheckpointReference
 from foxtrot.config.evaluation import EvaluationResult
+from foxtrot.config.models import get_model
+from foxtrot.config.training import ultralytics_arguments
 from foxtrot.persistence.files import fingerprint, job_file
 from foxtrot.persistence.models import WeightsError, verify_weights
+from foxtrot.persistence.start_checkpoints import StartCheckpointError, locate_start_checkpoint
 
 from .contracts import (
     EvaluationInput, PipelineCancelled, PipelineFailure, ProgressReporter, TrainingInput, TrainingResult,
@@ -75,24 +78,40 @@ def _epoch_metrics(trainer) -> dict[str, float]:
 
 # Trains a real YOLO model with the job's own data.yaml and output folder.
 class UltralyticsTrainer:
-    # initialization: "pretrained" uses <workspace>/models/<model>.pt; "scratch" starts from random weights.
-    def __init__(self, *, initialization: Literal["pretrained", "scratch"] = "pretrained", workers: int = 2):
+    # initialization: "job" (normal) follows each job's own choice; "pretrained"/"scratch" force one
+    # mode for every job (tests, or the launcher's --initialization override).
+    # workers: None uses the job's runtime setting; a number overrides it (tests use 0).
+    def __init__(self, *, initialization: Literal["job", "pretrained", "scratch"] = "job",
+                 workers: int | None = None):
         self.initialization = initialization
         self.workers = workers
 
-    # Find the starting weights and their fingerprint: the installed, verified pretrained
-    # weights, or the bare architecture (no fingerprint) when starting from scratch.
+    # The job's start mode, unless the worker forces one.
+    def _mode(self, request: TrainingInput) -> str:
+        return request.resolved.initialization if self.initialization == "job" else self.initialization
+
+    # Find the starting weights and their fingerprint: installed pretrained weights, an earlier
+    # job's verified best.pt, or the bare architecture (no fingerprint) when starting from scratch.
     def _model_source(self, request: TrainingInput) -> tuple[str, str | None]:
-        model_id = request.resolved.model_id
-        if self.initialization == "scratch":
-            return f"{model_id}.yaml", None
-        models = Path(request.job_directory).parents[1] / "models"
+        spec = request.resolved
+        model = get_model(spec.model_id)
+        mode = self._mode(request)
+        workspace = Path(request.job_directory).parents[1]
+        if mode == "scratch":
+            return model.architecture, None
+        if mode == "checkpoint":
+            try:
+                path, digest = locate_start_checkpoint(workspace, spec.checkpoint_job_id, spec.model_id)
+            except StartCheckpointError as error:
+                raise PipelineFailure("start_checkpoint_unavailable", str(error)) from error
+            return str(path), digest
+        models = workspace / "models"
         try:
-            digest = verify_weights(models, model_id)
+            digest = verify_weights(models, model.model_id)
         except WeightsError as error:
             code = "weights_changed" if "changed" in str(error) else "weights_missing"
-            raise PipelineFailure(code, f"{error}. Install {model_id}.pt from the Setup page.") from error
-        return str(models / f"{model_id}.pt"), digest
+            raise PipelineFailure(code, f"{error}. Install {model.model_id}.pt from the Setup page.") from error
+        return str(models / f"{model.model_id}.pt"), digest
 
     # Run training, report each epoch, stop on cancel, and return the exact best checkpoint.
     def train(self, request: TrainingInput, reporter: ProgressReporter) -> TrainingResult:
@@ -101,7 +120,8 @@ class UltralyticsTrainer:
         YOLO = _load_ultralytics(output)
         settings = request.resolved.training
         model = YOLO(source)
-        reporter.log({"action": "model_loaded", "initialization": self.initialization,
+        mode = self._mode(request)
+        reporter.log({"action": "model_loaded", "initialization": mode,
                       "source": Path(source).name, "weights_sha256": weights_sha256})
         state = {"epochs_done": 0, "epoch_pending": False, "metrics": {}}
 
@@ -127,12 +147,16 @@ class UltralyticsTrainer:
         model.add_callback("on_train_epoch_end", on_train_epoch_end)
         model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
         try:
-            model.train(
-                data=request.data_yaml, epochs=settings.epochs, batch=settings.batch_size,
-                imgsz=settings.image_size, seed=settings.seed, deterministic=True, device=settings.device,
-                workers=self.workers, project=str(output), name="train", exist_ok=False,
-                plots=False, verbose=False,
-            )
+            arguments = ultralytics_arguments(settings)  # every user setting, already validated
+            if self.workers is not None:
+                arguments["workers"] = self.workers
+            # Application-managed: inputs, outputs and run identity always belong to this job.
+            arguments.update(data=request.data_yaml, project=str(output), name="train", exist_ok=False,
+                             plots=False, verbose=False, val=True, save=True, resume=False,
+                             pretrained=mode != "scratch")
+            reporter.log({"action": "training_arguments", "arguments": {
+                key: value for key, value in arguments.items() if key not in ("data", "project")}})
+            model.train(**arguments)
         except PipelineCancelled:
             raise
         except Exception as error:
@@ -147,6 +171,7 @@ class UltralyticsTrainer:
             checkpoint=CheckpointReference(relative_path=best.relative_to(request.job_directory).as_posix(),
                                            sha256=digest),
             epochs_completed=state["epochs_done"], metrics=state["metrics"], fixture=False,
+            start_weights_sha256=weights_sha256, initialization=mode,
         )
 
 

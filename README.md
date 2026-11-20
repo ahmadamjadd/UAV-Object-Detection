@@ -14,6 +14,7 @@ foxtrot --workspace /abs/path/to/foxtrot-workspace --pipeline-adapter ultralytic
 
 The browser opens at http://127.0.0.1:8765/. Step-by-step use, what each stage
 guarantees, and current limits are in [docs/training.md](docs/training.md).
+Generating a dataset from the browser (V2) is described in [docs/generation.md](docs/generation.md).
 Environment setup (Python 3.14, locked dependencies) is in
 [docs/development.md](docs/development.md); architecture and delivery steps are in
 [implementation_plan.md](implementation_plan.md); current state is recorded in

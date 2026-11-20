@@ -68,7 +68,7 @@ export function Datasets() {
 }
 
 // Shows a check report: per-split counts, then the errors and warnings found.
-function ReportView({ report }: { report: DatasetReport }) {
+export function ReportView({ report }: { report: DatasetReport }) {
   return (
     <div>
       <h3>Check report: {report.valid ? "valid" : "invalid"}</h3>

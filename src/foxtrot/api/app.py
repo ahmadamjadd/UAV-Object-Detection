@@ -14,14 +14,16 @@ import typing
 import urllib.request
 
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from foxtrot.config.generation import GenerationRecipe, GenerationRequest, SplitSettings
 from foxtrot.config.job import JobSpec
+from foxtrot.config.models import MODELS
 from foxtrot.config.result import JobResult
-from foxtrot.config.training import TrainingSettings
+from foxtrot.config.training import GROUPS, TrainingSettings
 from foxtrot.config.snapshot import resolve_job
 from foxtrot.persistence.commands import request_cancel
 from foxtrot.persistence.database import DATABASE_SCHEMA_VERSION, initialize_database
@@ -30,12 +32,17 @@ from foxtrot.persistence.datasets import DatasetUnavailable, list_datasets
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.models import WeightsError, install_weights, list_weights
 from foxtrot.persistence.files import job_file, job_path
+from foxtrot.persistence.start_checkpoints import StartCheckpointError, check_start_checkpoint
 from foxtrot.persistence.jobs import (
     JobRecord, create_recorded_job, get_job_record, list_job_records, load_job_configurations,
 )
 from foxtrot.persistence.tracking import get_run_association, list_tracking
+from foxtrot.pipeline.contracts import PipelineFailure
+from foxtrot.pipeline.coverage import coverage_report, ultralytics_default_keys
+from foxtrot.pipeline.foxtrot_generator import generator_directory, generator_files
 from foxtrot.pipeline.registry import PipelineSettings
 
+from .generation import GenerationBusy, GenerationRuns
 from .security import LOOPBACK_HOSTS, require_local_session
 from .settings import DestinationUpdate, SettingsStore
 from .uploads import UploadScheduler
@@ -95,6 +102,7 @@ def create_app(
     app.state.settings = SettingsStore(workspace_root, source_checkout)
     app.state.weights_opener = urllib.request.urlopen  # replaced in tests: no real downloads
     app.state.uploads = UploadScheduler(workspace_root, source_checkout)  # started by the launcher
+    app.state.generation = GenerationRuns(workspace_root, source_checkout)  # dataset generation runs
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOOPBACK_HOSTS))
     workspace, checkout = app.state.workspace, app.state.checkout
 
@@ -129,6 +137,8 @@ def create_app(
         return {
             "version": version,
             "models": _choices(JobSpec, "model_id"),
+            "model_details": [{"model_id": m.model_id, "family": m.family, "variant": m.variant,
+                               "display_name": m.display_name, "task": m.task} for m in MODELS.values()],
             "devices": _choices(TrainingSettings, "device"),
             "pipeline_adapters": _choices(PipelineSettings, "adapter"),
             "active_pipeline_adapter": app.state.pipeline_adapter,
@@ -136,9 +146,35 @@ def create_app(
             "tracking_destinations": [d["destination_id"] for d in app.state.settings.destinations()],
         }
 
+    # The job schema (the form is built from it) plus the order and titles of setting groups.
     @app.get("/api/schemas")
     def schemas():
-        return {"job": JobSpec.model_json_schema()}
+        return {"job": JobSpec.model_json_schema(), "training_groups": GROUPS}
+
+    # What happens to every runtime and generator setting (exposed, managed, inapplicable, unsupported).
+    @app.get("/api/coverage")
+    def coverage():
+        return coverage_report(ultralytics_default_keys())
+
+    # Finished jobs whose best checkpoint a new job can start from.
+    @app.get("/api/checkpoints")
+    def checkpoints():
+        found = []
+        for record in list_job_records(workspace, checkout, limit=200):
+            if record.execution_state != "finished":
+                continue
+            try:
+                spec = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, record.job_id).resolved_json)
+                result = JobResult.model_validate_json(
+                    job_file(job_path(workspace.resolve(), record.job_id), "result.json").read_bytes())
+            except (ValueError, OSError):
+                continue
+            if result.checkpoint is None:
+                continue
+            found.append({"job_id": record.job_id, "model_id": spec.model_id, "dataset_id": spec.dataset_id,
+                          "finished_at": record.finished_at,
+                          "map50_95": result.evaluation.map50_95 if result.evaluation else None})
+        return found
 
     @app.get("/api/session")
     def session():
@@ -153,6 +189,32 @@ def create_app(
     @app.get("/api/models")
     def models():
         return list_weights(workspace, checkout)
+
+    # What the Generate screen needs: defaults, limits, and whether the generator is present.
+    @app.get("/api/generation/options")
+    def generation_options():
+        try:
+            generator_files()
+            available, message = True, None
+        except PipelineFailure as error:
+            available, message = False, error.message
+        backgrounds = generator_directory().parents[1] / "data" / "raw"
+        return {"available": available, "message": message,
+                "default_backgrounds": str(backgrounds) if backgrounds.is_dir() else None,
+                "recipe": GenerationRecipe().model_dump(mode="json"),
+                "split": SplitSettings().model_dump(mode="json"),
+                "schema": GenerationRequest.model_json_schema()}
+
+    # Progress and outcome of one generation run (preview or dataset).
+    @app.get("/api/generation/runs/{run_id}")
+    def generation_run(run_id: str):
+        return app.state.generation.status(run_id)
+
+    # One sample image from a preview run (the browser draws the boxes on top).
+    @app.get("/api/generation/runs/{run_id}/images/{name}")
+    def generation_image(run_id: str, name: str):
+        return FileResponse(app.state.generation.preview_image(run_id, name), media_type="image/jpeg",
+                            headers={"Cache-Control": "no-store"})
 
     @app.get("/api/tracking/destinations")
     def destinations():
@@ -201,9 +263,13 @@ def create_app(
     @app.post("/api/jobs", dependencies=guarded)
     def submit(submission: JobSubmission):
         try:
-            resolve_job(submission.request)
+            resolved = resolve_job(submission.request)
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_input=False)) from error
+        try:  # an earlier job's checkpoint must exist, be finished, unchanged, and the same model
+            check_start_checkpoint(workspace, checkout, JobSpec.model_validate_json(resolved.resolved_json))
+        except StartCheckpointError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
         try:
             directory = create_recorded_job(workspace, checkout, submission.request, submission.submission_key)
         except ValueError as error:
@@ -270,6 +336,25 @@ def create_app(
         return {"imported": dataset is not None,
                 "dataset": dataset.metadata.model_dump(mode="json") if dataset else None,
                 "report": report.model_dump(mode="json")}
+
+    # Start a background run: a few sample images ("preview") or a full dataset ("dataset").
+    def start_generation(kind: str, body: GenerationRequest):
+        try:
+            return app.state.generation.start(kind, body)
+        except GenerationBusy as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/api/generation/preview", dependencies=guarded)
+    def generation_preview(body: GenerationRequest):
+        return start_generation("preview", body)
+
+    @app.post("/api/generation/datasets", dependencies=guarded)
+    def generation_dataset(body: GenerationRequest):
+        return start_generation("dataset", body)
+
+    @app.post("/api/generation/runs/{run_id}/cancel", dependencies=guarded)
+    def generation_cancel(run_id: str):
+        return app.state.generation.cancel(run_id)
 
     # ------------------------------------------------------------ interface
 

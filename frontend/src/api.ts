@@ -39,7 +39,16 @@ export type Capabilities = {
   active_pipeline_adapter: string | null;
   real_training: boolean;
   tracking_destinations: string[];
+  model_details?: { model_id: string; family: string; variant: string; display_name: string; task: string }[];
 };
+
+// A finished job whose best checkpoint a new job can start from (V3).
+export type CheckpointOption = {
+  job_id: string; model_id: string; dataset_id: string; finished_at: string | null; map50_95: number | null;
+};
+
+export type CoverageRow = { key: string; status: "exposed" | "managed" | "inapplicable" | "unsupported"; detail: string };
+export type CoverageReport = { runtime: CoverageRow[]; generator: CoverageRow[] };
 
 export type Dataset = { dataset_id: string; class_names: string[]; validation_status: string };
 
@@ -70,6 +79,40 @@ export type Destination = {
   has_credentials: boolean;
 };
 
+// V2 dataset generation: settings sent to the backend (see config/generation.py).
+export type Range = { low: number; high: number };
+export type GenerationRecipe = {
+  images_per_class: number; canvas_size: number; seed: number; shape_scale: Range; noise: number; blur: Range;
+  brightness_difference: number; contrast: Range; brightness: Range; saturation: Range; desaturate: boolean;
+  add_letter: boolean; letter_probability: number; add_light_gradient: boolean; light_probability: number;
+  light_opacity: number;
+};
+export type SplitSettings = { train_ratio: number; seed: number; group_by_background: boolean };
+export type GenerationRequest = { recipe: GenerationRecipe; split: SplitSettings; backgrounds: string };
+
+export type GenerationOptions = {
+  available: boolean; message: string | null; default_backgrounds: string | null;
+  recipe: GenerationRecipe; split: SplitSettings;
+};
+
+export type PreviewBox = { class_name: string; x: number; y: number; width: number; height: number };
+export type PreviewResult = {
+  seed: number; canvas_size: number; class_names: string[]; background_count: number;
+  images: { image: string; background: string; boxes: PreviewBox[] }[];
+};
+export type DatasetBuildResult = {
+  dataset_id: string; cached: boolean; class_names: string[];
+  counts: { images: number; train: number; val: number; objects_per_class: Record<string, number> } | null;
+  groups: Record<string, number>; report: DatasetReport | null;
+};
+export type GenerationRun = {
+  run_id: string; kind: "preview" | "dataset";
+  state: "queued" | "running" | "finished" | "failed" | "cancelled" | "interrupted";
+  phase: string; done: number; total: number;
+  error: { code: string; message: string } | null;
+  result: PreviewResult | DatasetBuildResult | null;
+};
+
 export class ApiError extends Error {
   constructor(public status: number, public detail: unknown) {
     super(typeof detail === "string" ? detail : `Request failed (${status})`);
@@ -98,7 +141,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 export const api = {
   health: () => request<{ status: string }>("GET", "/api/health"),
   capabilities: () => request<Capabilities>("GET", "/api/capabilities"),
-  schemas: () => request<{ job: any }>("GET", "/api/schemas"),
+  schemas: () => request<{ job: any; training_groups: Record<string, string> }>("GET", "/api/schemas"),
+  checkpoints: () => request<CheckpointOption[]>("GET", "/api/checkpoints"),
+  coverage: () => request<CoverageReport>("GET", "/api/coverage"),
   datasets: () => request<Dataset[]>("GET", "/api/datasets"),
   destinations: () => request<Destination[]>("GET", "/api/tracking/destinations"),
   checkDestination: (id: string) =>
@@ -115,6 +160,12 @@ export const api = {
     request<JobView>("POST", "/api/jobs", { submission_key: submissionKey, request: jobRequest }),
   cancel: (id: string) => request<JobView>("POST", `/api/jobs/${id}/cancel`),
   retrySync: (id: string) => request<{ queued: boolean }>("POST", `/api/jobs/${id}/retry-sync`),
+  generationOptions: () => request<GenerationOptions>("GET", "/api/generation/options"),
+  startPreview: (value: GenerationRequest) => request<GenerationRun>("POST", "/api/generation/preview", value),
+  startGeneration: (value: GenerationRequest) => request<GenerationRun>("POST", "/api/generation/datasets", value),
+  generationRun: (id: string) => request<GenerationRun>("GET", `/api/generation/runs/${id}`),
+  cancelGeneration: (id: string) => request<GenerationRun>("POST", `/api/generation/runs/${id}/cancel`),
+  previewImageUrl: (runId: string, image: string) => `/api/generation/runs/${runId}/images/${image}`,
 };
 
 export const TERMINAL = new Set(["finished", "failed", "cancelled", "interrupted"]);

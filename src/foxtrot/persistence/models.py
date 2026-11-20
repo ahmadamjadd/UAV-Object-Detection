@@ -18,13 +18,13 @@ import sys
 import urllib.request
 from uuid import uuid4
 
+from foxtrot.config.models import MODELS
+
 from .files import sync_directory
 from .workspace import initialize_workspace
 
-# Official Ultralytics release files; the same ones YOLO("yolov8n.pt") would fetch.
-WEIGHTS_SOURCES = {
-    "yolov8n": "https://github.com/ultralytics/assets/releases/download/v8.4.0/yolov8n.pt",
-}
+# Official Ultralytics release files for every registered model (the same ones YOLO("yolov8n.pt") would fetch).
+WEIGHTS_SOURCES = {model_id: entry.weights_url for model_id, entry in MODELS.items()}
 MIN_BYTES = 100_000          # anything smaller is an error page, not weights
 MAX_BYTES = 500_000_000      # refuse runaway downloads
 TIMEOUT_SECONDS = 60
@@ -91,7 +91,7 @@ def verify_weights(models_directory: Path, model_id: str) -> str:
 def list_weights(workspace_root: str | Path, source_checkout: str | Path) -> list[dict]:
     directory = _models_directory(initialize_workspace(workspace_root, source_checkout))
     result = []
-    for model_id in sorted(WEIGHTS_SOURCES):
+    for model_id in WEIGHTS_SOURCES:  # registry order: yolov8n first
         record = read_weights_record(directory, model_id)
         try:
             verify_weights(directory, model_id)
@@ -161,7 +161,7 @@ def main(argv=None) -> int:
     parser.add_argument("--workspace", required=True, type=Path)
     parser.add_argument("--source-checkout", required=True, type=Path)
     parser.add_argument("action", choices=("install", "list"))
-    parser.add_argument("model_id", nargs="?", default="yolov8n", choices=sorted(WEIGHTS_SOURCES))
+    parser.add_argument("model_id", nargs="?", default="yolov8n", choices=list(WEIGHTS_SOURCES))
     parser.add_argument("--from", dest="source_file", type=Path, help="Use this local .pt file instead of downloading")
     arguments = parser.parse_args(argv)
     try:

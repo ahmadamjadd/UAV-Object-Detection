@@ -77,7 +77,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.json("GET", "/api/health"), (200, {"status": "ok", "database_schema_version": 6}))
         status, capabilities = self.json("GET", "/api/capabilities")
         self.assertEqual(status, 200)
-        self.assertEqual((capabilities["models"], capabilities["devices"]), (["yolov8n"], ["cpu"]))
+        self.assertEqual((capabilities["models"][0], len(capabilities["models"]), capabilities["devices"]),
+                         ("yolov8n", 20, ["cpu"]))
         self.assertEqual(capabilities["active_pipeline_adapter"], "fixture")
         self.assertFalse(capabilities["real_training"])
         status, schemas = self.json("GET", "/api/schemas")

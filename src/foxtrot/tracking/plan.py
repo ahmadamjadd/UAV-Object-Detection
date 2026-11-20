@@ -16,7 +16,33 @@ STATUS = {"finished": "FINISHED", "failed": "FAILED", "interrupted": "FAILED", "
 UPLOADED_ARTIFACTS = (
     ("checkpoint", "weights"), ("job-result", "results"),
     ("pipeline-result", "results"), ("data-yaml", "dataset"), ("summary", "results"),
+    ("dataset-provenance", "dataset"),
 )
+
+
+# MLflow parameters describing how a generated dataset was made and split (V2).
+def generation_params(provenance: dict | None) -> dict[str, str]:
+    if not provenance:
+        return {}
+    recipe, split = provenance.get("recipe", {}), provenance.get("split", {})
+    counts, backgrounds = provenance.get("counts", {}), provenance.get("backgrounds", {})
+    values = {
+        "dataset.generated": True,
+        "dataset.generation.identity_sha256": provenance.get("identity_sha256"),
+        "dataset.generation.recipe_sha256": provenance.get("recipe_sha256"),
+        "dataset.generation.generator_sha256": provenance.get("generator", {}).get("sha256"),
+        "dataset.generation.seed": provenance.get("generation_seed"),
+        "dataset.generation.images_per_class": recipe.get("images_per_class"),
+        "dataset.generation.canvas_size": recipe.get("canvas_size"),
+        "dataset.generation.background_count": backgrounds.get("count"),
+        "dataset.split.train_ratio": split.get("train_ratio"),
+        "dataset.split.seed": split.get("seed"),
+        "dataset.split.group_by_background": split.get("group_by_background"),
+        "dataset.split.train_images": counts.get("train"),
+        "dataset.split.validation_images": counts.get("val"),
+    }
+    return {key: str(value).lower() if isinstance(value, bool) else str(value)
+            for key, value in values.items() if value is not None}
 
 
 # Metric names MLflow accepts (letters, digits, _ . / - and spaces).
@@ -44,14 +70,14 @@ def _flatten(prefix: str, value, into: dict[str, str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
             _flatten(f"{prefix}.{key}" if prefix else key, item, into)
-    else:
+    elif value is not None:  # None = "runtime chooses" (e.g. lr0 with optimizer auto): nothing to log
         into[prefix] = str(value)
 
 
 def build_tracking_plan(
     *, result: JobResult, resolved: JobSpec, resolved_sha256: str, adapter: str, fixture: bool,
     dataset: DatasetInput, pipeline: PipelineResult | None, artifact_names: set[str],
-    epoch_progress=(),
+    epoch_progress=(), dataset_provenance: dict | None = None,
 ) -> list[TrackingOperation]:
     job_id = result.job_id
     params: dict[str, str] = {}
@@ -61,6 +87,12 @@ def build_tracking_plan(
         "dataset.content_sha256": dataset.metadata.content_sha256,
         "dataset.class_names": ",".join(dataset.metadata.class_names),
     })
+    params.update(generation_params(dataset_provenance))
+    # V3: the model's actual starting weights, traceable to the reported results.
+    if pipeline is not None and pipeline.training.initialization is not None:
+        params["model.initialization"] = pipeline.training.initialization
+        if pipeline.training.start_weights_sha256:
+            params["model.start_weights_sha256"] = pipeline.training.start_weights_sha256
     operations = [
         TrackingOperation(operation="create_run", payload={
             "run_name": f"foxtrot-{job_id[:8]}",

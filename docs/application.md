@@ -88,6 +88,21 @@ Team members do not need Node: the built files ship with the package.
 detail now includes the official `result`. The launcher also starts the background
 uploader, and `--source-checkout` is optional. See [training.md](training.md).
 
+## Added in V2
+
+A **Generate** screen and `/api/generation/...` endpoints (options, preview,
+datasets, run status, cancel, preview images). Each run is a separate process;
+the launcher cancels an active run on shutdown. See [generation.md](generation.md).
+
+## Added in V3
+
+`GET /api/capabilities` adds `model_details` (20 registered models);
+`GET /api/schemas` adds `training_groups`; `GET /api/checkpoints` lists finished
+jobs a new job can start from; `GET /api/coverage` gives the parameter coverage
+report. `POST /api/jobs` additionally refuses an unusable start checkpoint (422).
+The New training screen is built from the schema and has a JSON editor. See
+[training.md](training.md#models-and-settings-v3).
+
 ## Limits
 
 - Progress uses 1-second polling with the event cursor; Server-Sent Events can come with V1.

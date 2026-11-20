@@ -75,8 +75,9 @@ def main(argv=None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--pipeline-adapter", choices=("fixture", "ultralytics"),
                         help="Worker runs this adapter; omit to run H5 infrastructure fixtures")
-    parser.add_argument("--initialization", choices=("pretrained", "scratch"), default="pretrained",
-                        help="ultralytics: start from workspace pretrained weights or from random weights")
+    parser.add_argument("--initialization", choices=("job", "pretrained", "scratch"), default="job",
+                        help="ultralytics: 'job' (default) uses each job's own choice; "
+                             "'pretrained'/'scratch' force one mode for every job")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser tab")
     parser.add_argument("--no-worker", action="store_true", help="Serve the website/API only")
     parser.add_argument("--runtime-directory", type=Path, help=argparse.SUPPRESS)  # isolated tests only
@@ -120,6 +121,7 @@ def main(argv=None) -> int:
         pass
     finally:
         app.state.uploads.stop()  # an interrupted upload resumes next time
+        app.state.generation.stop()  # a running generation is cancelled; nothing half-built is kept
         code = stop_worker(worker) if worker is not None else 0
     if not server.started:
         print(f"Could not serve on {url}; is the port already in use?", file=sys.stderr)
