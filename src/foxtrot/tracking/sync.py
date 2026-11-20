@@ -67,18 +67,37 @@ def sync_pending(workspace: Path, checkout: Path, *, job_id: str | None = None) 
     for job in pending:
         resolved = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, job).resolved_json)
         by_destination.setdefault(resolved.tracking_destination_id, []).append(job)
-    results = []
+    from foxtrot.studies.tracking import finalize_studies, trial_run_tags, trial_settled
+
+    results, clients = [], {}
+
+    # One client per destination, created once (credentials are configured for each).
+    def client_for(destination_id: str):
+        if destination_id not in clients:
+            clients[destination_id] = _client_for(store, destination_id)
+        return clients[destination_id]
+
     for destination_id, jobs in by_destination.items():
         try:
-            client = _client_for(store, destination_id)
+            client = client_for(destination_id)
         except Exception as error:  # not configured or unreachable: uploads stay pending
             reason = _safe_message(error, store)
             results += [{"job_id": job, "tracking_state": "pending", "skipped": reason} for job in jobs]
             continue
         for job in jobs:
-            record = sync_job_tracking(workspace, checkout, job, client)
+            study = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, job).resolved_json).study
+            if study and not trial_settled(workspace, checkout, study.study_id, study.trial_number):
+                results.append({"job_id": job, "tracking_state": "pending",
+                                "deferred": "waiting for the study to record this trial's outcome"})
+                continue
+            record = sync_job_tracking(workspace, checkout, job, client, extra_run_tags=lambda tags: trial_run_tags(
+                workspace, checkout, client, destination_id, tags))
             results.append({"job_id": job, "tracking_state": record.tracking_state,
                             "error": record.tracking_error.message if record.tracking_error else None})
+    for outcome in finalize_studies(workspace, checkout, client_for):  # V5: close ended studies' parent runs
+        results.append({"study_id": outcome["study_id"],
+                        "tracking_state": "synced" if outcome["finalized"] else "pending",
+                        "error": outcome.get("error")})
     return results
 
 

@@ -105,6 +105,8 @@ def main(argv=None) -> int:
             return
         print(f"Foxtrot is running at {url} (Ctrl+C to stop)", flush=True)
         app.state.uploads.start()  # send finished jobs to MLflow automatically
+        if not app.state.studies.start():  # V5: move tuning studies forward
+            print("Another Foxtrot process coordinates this workspace's studies.", flush=True)
         if worker is not None:
             time.sleep(0.5)
             if worker.poll() == WORKER_ALREADY_RUNNING:
@@ -122,6 +124,7 @@ def main(argv=None) -> int:
     finally:
         app.state.uploads.stop()  # an interrupted upload resumes next time
         app.state.generation.stop()  # a running generation is cancelled; nothing half-built is kept
+        app.state.studies.stop()  # studies continue from their saved trials at the next start
         code = stop_worker(worker) if worker is not None else 0
     if not server.started:
         print(f"Could not serve on {url}; is the port already in use?", file=sys.stderr)

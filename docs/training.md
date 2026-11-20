@@ -89,7 +89,7 @@ python -m foxtrot.tracking.sync --workspace W --source-checkout C run [--job ID]
 ## Limits (later slices)
 
 - CPU device only; GPU options are listed as unsupported until verified.
-- DVC datasets and real-image evaluation (V4).
+- DVC datasets and real-image evaluation: see [evaluation.md](evaluation.md).
 - Raw stdout/stderr logs are kept locally and not uploaded.
 - No automatic redirect to MLflow; the View in MLflow button appears once synced.
 - Uploads run while Foxtrot is open; a job finished while it was closed is sent at the next start.

@@ -21,7 +21,11 @@ Direct Python dependencies are pinned in `pyproject.toml`; `requirements.txt`
 locks their complete dependency set and allowed artifact hashes for **Linux
 x86_64 / CPython 3.14**. It includes the pinned build dependency from
 `requirements-dev.in`. Do not reuse this platform lock as a claim of Windows,
-macOS, ARM, or GPU support. Optuna is intentionally deferred until V5.
+macOS, ARM, or GPU support. V5 (20 November 2026) added `optuna==5.0.0` and its one new dependency
+`colorlog==6.12.0` (released September and July 2026; 5.1.0 was skipped as only days old), resolved by pip
+against the existing pins (SQLAlchemy, Alembic and tqdm were already locked), with PyPI's hashes for every file.
+Existing environments: `pip install --require-hashes --no-deps optuna==5.0.0 colorlog==6.12.0` with those hashes,
+or reinstall from `requirements.txt`.
 
 | Area | Baseline |
 | --- | --- |

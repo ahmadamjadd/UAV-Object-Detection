@@ -25,6 +25,7 @@ dependencies = [
     "fastapi==0.142.2",
     "pydantic==2.13.5",
     "uvicorn==0.54.0",
+    "optuna==5.0.0",  # V5/V6 tuning studies
 ]
 
 [project.scripts]

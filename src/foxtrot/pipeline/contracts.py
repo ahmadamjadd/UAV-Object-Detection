@@ -147,6 +147,7 @@ class EvaluationInput(Contract):
     checkpoint: CheckpointReference
     job_directory: str
     dataset: DatasetInput
+    plots: bool = False  # V4: evaluation jobs also save confusion-matrix and PR-curve images
 
     @field_validator("job_directory")
     @classmethod
@@ -162,6 +163,8 @@ class PipelineResult(Contract):
     adapter: str = Field(pattern=r"^[a-z][a-z0-9_-]{0,63}$")
     training: TrainingResult
     evaluation: EvaluationResult
+    # V4: plot images under output/evaluation/ (relative to the job), re-checked by the parent.
+    plots: tuple[str, ...] = ()
 
     @model_validator(mode="after")
     def evaluation_scores_selected_checkpoint(self) -> Self:

@@ -25,7 +25,9 @@ from .contracts import TrackingClient
 
 def sync_job_tracking(
     workspace_root: str | Path, source_checkout: str | Path, job_id: str, client: TrackingClient,
+    *, extra_run_tags=None,
 ) -> JobRecord:
+    """``extra_run_tags(tags) -> dict`` may add tags when the run is created (V5: study parent link)."""
     root = initialize_workspace(workspace_root, source_checkout)
     record = get_job_record(root, source_checkout, job_id)
     pending = list_tracking(root, source_checkout, job_id, pending_only=True)
@@ -45,9 +47,10 @@ def sync_job_tracking(
             record_tracking_attempt(root, source_checkout, job_id, entry.position)
             if operation == "create_run":
                 if association is None:
-                    handle = client.find_run(job_id) or client.create_run(
-                        job_id, payload["run_name"], dict(payload["tags"]),
-                    )
+                    tags = dict(payload["tags"])
+                    if extra_run_tags is not None:
+                        tags.update(extra_run_tags(tags))
+                    handle = client.find_run(job_id) or client.create_run(job_id, payload["run_name"], tags)
                     association = record_run_association(
                         root, source_checkout, job_id, destination_id=destination,
                         run_id=handle.run_id, run_url=handle.url,

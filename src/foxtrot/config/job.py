@@ -8,6 +8,14 @@ from .models import MODEL_IDS
 from .training import TrainingSettings
 
 
+# V5: the study and trial a job was created for (absent for hand-made jobs).
+class StudyTrialRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    study_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    trial_number: int = Field(ge=0)
+
+
 class JobSpec(BaseModel):
     """Describe a training request without starting any work."""
 
@@ -19,6 +27,10 @@ class JobSpec(BaseModel):
     )
 
     schema_version: int = Field(default=1, ge=1, le=1)
+
+    # V4: "train" makes a new checkpoint; "evaluate" scores an earlier job's checkpoint
+    # (checkpoint_job_id) on a labeled evaluation dataset without training.
+    kind: Literal["train", "evaluate"] = "train"
 
     dataset_id: str = Field(
         pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$",
@@ -40,6 +52,8 @@ class JobSpec(BaseModel):
         default_factory=TrainingSettings,
     )
 
+    study: StudyTrialRef | None = None
+
     # A checkpoint job is needed exactly when starting from a checkpoint.
     @model_validator(mode="after")
     def checkpoint_matches_initialization(self) -> Self:
@@ -47,4 +61,6 @@ class JobSpec(BaseModel):
             raise ValueError("Choose the earlier job whose checkpoint to start from")
         if self.initialization != "checkpoint" and self.checkpoint_job_id is not None:
             raise ValueError("checkpoint_job_id is only used when initialization is 'checkpoint'")
+        if self.kind == "evaluate" and self.initialization != "checkpoint":
+            raise ValueError("An evaluation scores an earlier job's checkpoint: use initialization 'checkpoint'")
         return self

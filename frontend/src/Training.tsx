@@ -32,7 +32,8 @@ export function TrainingForm({ capabilities, initialDataset, onSubmitted }: {
 
   // Load datasets, the settings schema, installed weights and usable checkpoints.
   useEffect(() => {
-    api.datasets().then((list) => {
+    api.datasets().then((all) => {
+      const list = all.filter((d) => d.role === "training");  // real validation/test images are never trained on
       setDatasets(list);
       setDatasetId((old) => old || list[0]?.dataset_id || "");
     }, (e) => setError(describeError(e)));

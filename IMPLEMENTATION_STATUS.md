@@ -1,6 +1,6 @@
 # Team Foxtrot implementation handoff
 
-Updated: **20 November 2026, Asia/Karachi** (V2 and V3 complete, committed and pushed).
+Updated: **20 November 2026, Asia/Karachi** (V4, V5 and V6 complete, not yet committed; V2/V3 committed and pushed).
 
 ## Objective and scope
 
@@ -9,7 +9,7 @@ Build Option C: a local Python application serving the browser UI and API, with 
 ## Working rules and authorization
 
 - H1, the remaining H3 work, all H4, and all H5 implementation/testing were expressly authorized as milestone-specific exceptions, including agent edits and command execution. On 10 November 2026 the user asked the agent to "implement H6 and then explain" it; the agent treated that as a whole-H6 exception. On 11 November 2026 the user approved switching to Python 3.14 ("yes switch it") and asked the agent to "complete h7". **These exceptions are complete.**
-- **Vertical slices (from 18 November 2026):** each slice is split into small substeps. By default the agent gives the user the code (comment above every class/function; long files split into numbered parts with expected line counts), placement and purpose, the user pastes it, and they confirm understanding before the next substep. The agent tests every substep in a scratch copy first. During V1 the user repeatedly asked the agent to apply specific substeps itself ("paste code and complete step", "complete 1.9 fully", "complete the whole v1"); each such request covers only that substep or slice. On 19 November 2026 the user asked the agent to "complete whole v2" and explain it afterwards (after asking for at most 3–4 substeps per slice); V2 was implemented and verified by the agent. On 20 November 2026 the user asked for V3 in 3–4 substeps under the manual workflow; after reviewing 3.1 they asked the agent to "paste code and test" it, then to "complete v3 on your own" and explain it afterwards. V3 was implemented and verified by the agent. **V4 is not authorized.**
+- **Vertical slices (from 18 November 2026):** each slice is split into small substeps. By default the agent gives the user the code (comment above every class/function; long files split into numbered parts with expected line counts), placement and purpose, the user pastes it, and they confirm understanding before the next substep. The agent tests every substep in a scratch copy first. During V1 the user repeatedly asked the agent to apply specific substeps itself ("paste code and complete step", "complete 1.9 fully", "complete the whole v1"); each such request covers only that substep or slice. On 19 November 2026 the user asked the agent to "complete whole v2" and explain it afterwards (after asking for at most 3–4 substeps per slice); V2 was implemented and verified by the agent. On 20 November 2026 the user asked for V3 in 3–4 substeps under the manual workflow; after reviewing 3.1 they asked the agent to "paste code and test" it, then to "complete v3 on your own" and explain it afterwards. V3 was implemented and verified by the agent. Later on 20 November 2026 the user asked the agent to "use sample images for now and complete v4 and explain as before"; V4 was implemented and verified by the agent. The user then asked the agent to "implement whole of v5" and, while it was in progress, "implement v6 too", to be explained and tested together with V4; V5 and V6 were implemented and verified by the agent. **V7 is not authorized.**
 - From H6, return to the manual workflow with approximately **4–5 meaningful steps per H milestone**, rather than many very small steps. State the milestone, proposed outcome, purpose, and expected files; wait for explicit approval. Normally supply code for the user to copy and commands for them to run. Do not independently edit source or run tests/builds/scripts/installations/servers unless newly authorized.
 - Agent read-only repository inspection remains allowed: pwd/ls/rg, cat/head/tail/read-only sed, and read-only Git status/diff/log/show. No commits, Git mutations, unrelated refactors, deletion, or dependency changes without explicit instruction.
 - Explain changes and unfamiliar terms simply in chat. For commands requested of the user, provide working directory, purpose, important flags, effects, and expected output; wait for results and explain them. Never request secrets.
@@ -19,6 +19,10 @@ Build Option C: a local Python application serving the browser UI and API, with 
 - Subagents, if expressly used, must follow the same scope, command, approval, and verification restrictions, with nonoverlapping edits and parent review. None were used for H3/H4/H5 completion.
 
 ## Current milestone and approval state
+
+**V5 and V6 complete (20 November 2026):** tuning studies (grid/random/TPE, conditional and log spaces, equal-budget and combined model comparison, recipe tuning with frozen validation, pruning, repeats, stop/resume) with MLflow parent/child runs; Optuna 5.0.0 added to the lock; 285/285 tests, 1,216 protected files unchanged; live real-YOLO studies verified. Not committed (together with V4). **V7–V8 not implemented; V7 awaits approval.**
+
+**V4 complete (20 November 2026):** dataset roles, labeled real-image sets with flight groups, evaluation jobs with the fixed `foxtrot-eval-v1` configuration, unlabeled previews, DVC revision import; 274/274 tests, 1,216 protected files unchanged; verified with sample images (no real flight data yet). Not committed. **V5–V8 not implemented; V5 awaits approval.**
 
 **V3 complete (20 November 2026):** 20-model registry, per-job start mode with traceable starting weights, 38 validated training settings forwarded and logged, coverage report, schema-built form with JSON editor; 267/267 tests, 1,216 protected files unchanged; live runs verified. Committed with V2 as `1dfd3e6` and pushed to GitHub (`foundation-h4-h7`). **V4–V8 not implemented; V4 awaits approval.**
 
@@ -71,6 +75,20 @@ Build Option C: a local Python application serving the browser UI and API, with 
 | V2: tracking/plan.py, execution/outcomes.py | `dataset.generation.*`/`dataset.split.*` params and `dataset-provenance` artifact (copied into the job folder and registered) for generated datasets |
 | V2: frontend/src/Generate.tsx, App.tsx, api.ts, Datasets.tsx, styles.css; static rebuilt | Generate screen: settings (advanced under "More settings"), preview gallery with label boxes, progress/cancel, dataset summary and report, "Train on this dataset" preselects it in New training |
 | V2 tests: tests/test_dataset_generation.py (15) | Recipe/split rules, MLflow params, real runs: publish/reuse/new identity, protected folders untouched, preview, invalid backgrounds, cancel, changed cache, lock conflict, one run at a time, fixture training job logs and uploads provenance, API options/session/422/404 |
+| V5/V6: pyproject.toml, requirements.txt, docs/development.md | `optuna==5.0.0` + `colorlog==6.12.0` with PyPI hashes (5.1.0 skipped as 4 days old); installed with `--require-hashes --no-deps`; `pip check` clean |
+| V5/V6: config/study.py | StudySpec (fixed dataset or recipe; 1–5 models, equal/combined; grid/random/tpe/repeat; trials per model, time limit, max epochs, objective, failure policy, pruning), SearchParam (int/float/log/step/categorical, conditions), recipe scalars and low+span ranges; validates names/types, finite grids ≤500, conditions, and every grid point or range-end combination through TrainingSettings/GenerationRecipe; `grid_points`, `planned_trials`, `resolve_settings` |
+| V5/V6: studies/store.py, coordinator.py, recipes.py, summary.py, tracking.py; config/job.py `study` | Study folders (study.json, state.json, optuna.db, trials/N.json, validation/); coordinator (workspace lease, cached Optuna storages closed on stop, ask-and-tell, grid via enqueue_trial because GridSampler calls study.stop() under ask-and-tell, orphan RUNNING trials failed, trial saved before its job, key `study-<id>-trial-<n>`, round-robin equal budgets, time limit, failure policy, median pruning via per-epoch events, waits for result.json after "finished", stop finish/cancel, resume); recipe trials built in a subprocess with frozen validation from held-out backgrounds and identity cache; summaries incl. repeat mean/stdev; MLflow parent run + child tags, uploads deferred until the trial outcome is recorded, parent finalized with best/counts/summary |
+| V5/V6: tracking/uploader.py, tracking/sync.py, api/uploads.py, tracking/plan.py, pipeline/fixture.py, pipeline/registry.py | `extra_run_tags` hook; study tags; scheduler treats deferred trial uploads as healthy and wakes for unfinalized studies; opt-in `fixture_config_scores` for tests (default fixture outputs unchanged) |
+| V5/V6: api/app.py, api/launcher.py; frontend Studies.tsx (new), App.tsx, api.ts, styles.css; static rebuilt | `/api/studies` options/plan/create/list/detail/stop/resume/repeat; launcher starts/stops the coordinator; Studies screen (definition form with Check plan, list, detail with trials, best overall/per model, stop/resume, repeat) |
+| V5/V6 tests: tests/test_studies.py (11) | Spec rules; grid exactness and best-trial identity; seeded random repeatability; stop/resume preserving trials; failures and stop policy; restart reusing the trial job; equal-budget TPE comparison; pruning with MLflow parent/child statuses; recipe study frozen validation/exclusion/cache; repeat seeds via API |
+| Docs: docs/studies.md (new), docs/application.md, README.md, implementation_plan.md | V5/V6 usage, mechanics, MLflow, API, limits |
+| V4: config/dataset.py, config/job.py, config/evaluation.py, config/lifecycle.py | Dataset `role` training/validation/test (default training) and `can_be_tuning_objective()` (false for test); JobSpec `kind` train/evaluate (evaluate needs initialization checkpoint); `EVALUATION_CONFIG` "foxtrot-eval-v1" (conf 0.001, IoU 0.7, batch 16, max_det 300); optional `per_class_map50_95`; new PREPARING→EVALUATING edge |
+| V4: persistence/dataset_import.py (`import_evaluation_dataset`), persistence/start_checkpoints.py (`check_dataset_use`), execution/supervisor.py | Labeled real sets (labels required, optional groups.json, group-preserving `<id>-val`/`<id>-test` division via plan_split); submission rules: training only on training datasets, evaluation only on validation/test with identical class names; worker `dataset_role` failure for jobs queued outside the website |
+| V4: execution/child.py, execution/outcomes.py, pipeline/contracts.py, pipeline/ultralytics_adapter.py, tracking/plan.py | Evaluate jobs copy and hash-verify the earlier best.pt, skip training, evaluate with plots; parent registers `plot-*` PNGs from output/evaluation; plan adds `foxtrot.kind` tag, `dataset.role`, `evaluation.*` params, per-class metrics, plot artifacts, no second weights upload; DVC provenance params |
+| V4: persistence/dvc_datasets.py, pipeline/prediction.py, pipeline/generation_runner.py, api/generation.py, api/app.py | DVCFileSystem import at an exact revision into a hidden workspace folder (repository/cache untouched; optional remote login from a tracking destination with secret redaction), validation, `dvc.json`; prediction previews (`measured: false`); runner kinds dvc/predict; `/api/datasets/dvc`, `/api/predictions`, import roles; `/api/checkpoints` lists training jobs only; capabilities `dvc_default_repository` |
+| V4: frontend Evaluate.tsx (new), Datasets.tsx, Generate.tsx (BoxGallery), Training.tsx, App.tsx, api.ts, styles.css; static rebuilt | Evaluate screen (evaluation job form, unlabeled preview gallery with banner), Datasets roles/test share/groups help and From Git/DVC form, training form shows training datasets only, Activity labels evaluation jobs |
+| V4 tests: tests/test_evaluation.py (7) | Roles/tuning guard, evaluate rules and lifecycle edge, group split and required labels, role/class rules incl. worker refusal, fixture evaluation job identities/plan, real YOLO evaluation plots + per-class metrics + prediction preview, DVC two revisions/bad revision/untouched repo/MLflow commit |
+| Docs: docs/evaluation.md (new), docs/application.md, docs/training.md, README.md, implementation_plan.md | V4 usage, rules, API, limits |
 | V3: config/models.py | Registry: yolov8/yolo11/yolo12/yolo26 × n/s/m/l/x (detect, ultralytics), architecture `<id>.yaml`, weights from the v8.4.0 release; every architecture built offline and forward-passed with the pinned runtime |
 | V3: config/job.py | `model_id` = any registry ID; `initialization` pretrained/scratch/checkpoint with `checkpoint_job_id` required exactly for checkpoint (schema_version stays 1; older resolved files load with defaults) |
 | V3: config/training.py | 38 settings in groups (training, optimizer, loss, augmentation, runtime) with `group`/`ultralytics` schema metadata and descriptions; image size multiple of 32; `optimizer=auto` refuses lr0/momentum/warmup_bias_lr (verified in pinned trainer code); named optimizers get Ultralytics defaults saved; `ultralytics_arguments()` (cache none→False, freeze 0→None, None omitted) |
@@ -110,6 +128,30 @@ No dependencies, generator/training/split code, DVC files, existing datasets, or
 - H1 target: Ubuntu 24.04.4 x86_64, Intel i5-13420H CPU, Python 3.12.3. Node 22.17.0/npm 10.9.2 are development tools. User chose their machine for now; second-machine installation and Docker are deferred. No GPU support has been verified. Keep current dependency pins; Optuna waits until V5.
 
 ## Verification
+
+### V5/V6 completion checks — 20 November 2026
+
+Repository root, `.venv` (CPython 3.14.4 + optuna 5.0.0), CPU.
+
+| Command / check | Outcome |
+| --- | --- |
+| `.venv/bin/python -B -W error::ResourceWarning -m unittest discover -s tests -p 'test_studies.py'` | **11/11 passed** (≈17–23 s), three consecutive runs; earlier runs found and fixed leaked Optuna database connections, unreaped recipe subprocesses, and a race reading result.json right after "finished" |
+| `.venv/bin/python -B scripts/verify_baseline.py` | **285/285 passed** (163.1 s), exit 0; **1,216 protected files unchanged** |
+| Live random study (real YOLOv8n, DVC dataset, lr0 log range, 3 trials) | finished in 65 s; best = highest value with its checkpoint hash; `auto`+`lr0` plan refused (422); automatic upload: parent run FINISHED with `best/map50_95`, counts, `study/summary.json`, 3 child runs with `mlflow.parentRunId` and `foxtrot.trial_state` |
+| Live V6 study (recipe.noise 10/60, yolov8n vs yolo11n, equal budget, TPE, 4 trials) | round-robin models; frozen validation from 79 of 397 backgrounds, training from the other 318; repeated recipes reused their datasets (`cached`) |
+| Headless Chrome on Studies | Detail view (trials, best, repeat) and form ("12 training trials at most (3 models × 4 trials each)") rendered; form column widened afterwards |
+
+### V4 completion checks — 20 November 2026
+
+Repository root, `.venv` (CPython 3.14.4), CPU.
+
+| Command / check | Outcome |
+| --- | --- |
+| `.venv/bin/python -B -m unittest discover -s tests -p 'test_evaluation.py'` | **7/7 passed** (39.5s), incl. real YOLO evaluation and a throwaway Git+DVC repository with a local remote |
+| `.venv/bin/python -B scripts/verify_baseline.py` | **274/274 passed** (241.9s), exit 0; **1,216 protected files unchanged** |
+| Live launcher, scratch workspace with isolated lease | Sample "real" set (24 generator images, seed 99, grouped by background as flights) → `sample-real-val`/`sample-real-test`; DVC import of this repository's `data/split` at HEAD (`cd92767`, md5 `3164ad9e…` = dvc.lock); repository `.dvc/cache` (476 files) and git status unchanged; training on a validation set refused; pretrained yolov8n trained on the DVC dataset (mAP50-95 0.872 synthetic val) |
+| Headless Chrome on Evaluate | Preview of 6 unlabeled images showed predicted boxes with confidences and the "Preview only" banner; evaluation submitted from the page finished and synced: mAP50-95 0.802 (Hexagon 0.886, Triangle 0.719), `model.start_weights_sha256` = trained best.pt, `evaluation.config` foxtrot-eval-v1, 6 plots in MLflow |
+| Bug found and fixed | Confidence input had min 0.01 with step 0.05, so the browser silently refused even the default 0.25; step changed to 0.01 |
 
 ### V3 completion checks — 20 November 2026
 
@@ -266,7 +308,7 @@ Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundati
 
 ## Exact next proposed action
 
-V2 and V3 are committed together as `1dfd3e6` (one commit, because shared files such as app.py, api.ts and the built UI changed in both) and pushed to GitHub. Wait for explicit approval to start **V4 — retrieve versioned datasets and evaluate labeled real images** (plan section 3), proposed as 3–4 substeps.
+V4, V5 and V6 are complete but **not committed**; the user wants to understand and test them together first, then ask before committing/pushing. V2 and V3 are committed as `1dfd3e6` and pushed. Then wait for explicit approval to start **V7 — resume interrupted work and recover tracking uploads** (plan section 3). Real labeled flight data is still needed for meaningful V4 results. The user's own Foxtrot instance on `~/foxtrot-workspace-v1` was running pre-V3 code during these checks and must be restarted to use V3–V6.
 
 Previous next action (done): start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
 

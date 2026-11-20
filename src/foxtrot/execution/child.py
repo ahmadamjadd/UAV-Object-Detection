@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 from pathlib import Path
 import signal
 import subprocess
@@ -12,9 +13,11 @@ import threading
 
 from foxtrot.config.job import JobSpec
 from foxtrot.config.lifecycle import ErrorDetails
-from foxtrot.persistence.files import job_file, job_path, sync_directory, write_new_text
+from foxtrot.config.checkpoint import CheckpointReference
+from foxtrot.persistence.files import fingerprint, job_file, job_path, sync_directory, write_new_text
+from foxtrot.persistence.start_checkpoints import StartCheckpointError, locate_start_checkpoint
 from foxtrot.pipeline.contracts import (
-    EvaluationInput, PipelineCancelled, PipelineFailure, PipelineResult, TrainingInput,
+    EvaluationInput, PipelineCancelled, PipelineFailure, PipelineResult, TrainingInput, TrainingResult,
 )
 from foxtrot.pipeline.registry import get_adapters
 from foxtrot.pipeline.yolo_dataset import write_yolo_data_yaml
@@ -65,28 +68,56 @@ class _Reporter:
         return self.cancelled.wait(seconds) if seconds > 0 else self.cancelled.is_set()
 
 
+# V4 evaluation jobs: copy the earlier job's verified best.pt into this job, so the scored
+# file is this job's own registered artifact, and describe it like a training result.
+def _checkpoint_for_evaluation(request: PipelineExecutionRequest, fixture: bool) -> TrainingResult:
+    directory = Path(request.job_directory)
+    spec = request.resolved
+    try:
+        source, digest = locate_start_checkpoint(directory.parents[1], spec.checkpoint_job_id, spec.model_id)
+    except StartCheckpointError as error:
+        raise PipelineFailure("start_checkpoint_unavailable", str(error)) from error
+    target = Path(request.output_directory) / "checkpoint" / "best.pt"
+    target.parent.mkdir()
+    shutil.copyfile(source, target)
+    if fingerprint(target)[0] != digest:
+        raise PipelineFailure("checkpoint_mismatch", "The checkpoint changed while it was being copied.")
+    return TrainingResult(
+        checkpoint=CheckpointReference(relative_path=target.relative_to(directory).as_posix(), sha256=digest),
+        epochs_completed=0, fixture=fixture, initialization="checkpoint", start_weights_sha256=digest,
+    )
+
+
 def run_pipeline(request: PipelineExecutionRequest, emit, cancelled: threading.Event) -> int:
     """Generate the job's data.yaml, train, evaluate the exact checkpoint, report."""
     adapters = get_adapters(request.pipeline)
     reporter = _Reporter(emit, cancelled)
     directory, output = Path(request.job_directory), Path(request.output_directory)
     try:
-        emit(Phase(phase="training"))
-        data_yaml = write_yolo_data_yaml(request.dataset, output / "data.yaml")
-        training = adapters.trainer.train(TrainingInput(
-            job_id=request.job_id, resolved=request.resolved, resolved_sha256=request.resolved_sha256,
-            dataset=request.dataset, data_yaml=str(data_yaml),
-            job_directory=str(directory), output_directory=str(output),
-        ), reporter)
-        if cancelled.is_set():
-            raise PipelineCancelled()
-        emit(Phase(phase="evaluating"))
+        evaluating_only = request.resolved.kind == "evaluate"
+        if evaluating_only:
+            emit(Phase(phase="evaluating"))
+            data_yaml = write_yolo_data_yaml(request.dataset, output / "data.yaml")
+            training = _checkpoint_for_evaluation(request, adapters.fixture)
+        else:
+            emit(Phase(phase="training"))
+            data_yaml = write_yolo_data_yaml(request.dataset, output / "data.yaml")
+            training = adapters.trainer.train(TrainingInput(
+                job_id=request.job_id, resolved=request.resolved, resolved_sha256=request.resolved_sha256,
+                dataset=request.dataset, data_yaml=str(data_yaml),
+                job_directory=str(directory), output_directory=str(output),
+            ), reporter)
+            if cancelled.is_set():
+                raise PipelineCancelled()
+            emit(Phase(phase="evaluating"))
         evaluation = adapters.evaluator.evaluate(EvaluationInput(
             job_id=request.job_id, checkpoint=training.checkpoint,
-            job_directory=str(directory), dataset=request.dataset,
+            job_directory=str(directory), dataset=request.dataset, plots=evaluating_only,
         ), reporter)
+        plots = tuple(sorted(path.relative_to(directory).as_posix()
+                             for path in (output / "evaluation").glob("*.png"))) if evaluating_only else ()
         result = PipelineResult(job_id=request.job_id, adapter=request.pipeline.adapter,
-                                training=training, evaluation=evaluation)
+                                training=training, evaluation=evaluation, plots=plots)
         write_new_text(output / "pipeline-result.json", result.model_dump_json(indent=2))
         sync_directory(output)
         emit(Completed(outcome="finished"))

@@ -40,6 +40,7 @@ export type Capabilities = {
   real_training: boolean;
   tracking_destinations: string[];
   model_details?: { model_id: string; family: string; variant: string; display_name: string; task: string }[];
+  dvc_default_repository?: string | null;
 };
 
 // A finished job whose best checkpoint a new job can start from (V3).
@@ -50,7 +51,9 @@ export type CheckpointOption = {
 export type CoverageRow = { key: string; status: "exposed" | "managed" | "inapplicable" | "unsupported"; detail: string };
 export type CoverageReport = { runtime: CoverageRow[]; generator: CoverageRow[] };
 
-export type Dataset = { dataset_id: string; class_names: string[]; validation_status: string };
+export type Dataset = {
+  dataset_id: string; class_names: string[]; validation_status: string; role: "training" | "validation" | "test";
+};
 
 export type DatasetIssue = { split: string; file: string | null; line: number | null; message: string };
 
@@ -64,7 +67,7 @@ export type DatasetReport = {
     objects_per_class: Record<string, number> }>;
 };
 
-export type DatasetImportResult = { imported: boolean; dataset: Dataset | null; report: DatasetReport };
+export type DatasetImportResult = { imported: boolean; dataset: Dataset | null; datasets?: Dataset[]; report: DatasetReport };
 
 export type ModelWeights = {
   model_id: string; status: "installed" | "missing" | "changed"; sha256: string | null; size_bytes: number | null;
@@ -105,12 +108,18 @@ export type DatasetBuildResult = {
   counts: { images: number; train: number; val: number; objects_per_class: Record<string, number> } | null;
   groups: Record<string, number>; report: DatasetReport | null;
 };
+// V4 prediction preview on unlabeled photos: boxes only, never a score.
+export type PredictionResult = {
+  measured: false; checkpoint_job_id: string; model_id: string; checkpoint_sha256: string; confidence: number;
+  note: string; images: { image: string | null; source: string; boxes: (PreviewBox & { confidence: number })[] }[];
+};
+
 export type GenerationRun = {
-  run_id: string; kind: "preview" | "dataset";
+  run_id: string; kind: "preview" | "dataset" | "dvc" | "predict";
   state: "queued" | "running" | "finished" | "failed" | "cancelled" | "interrupted";
   phase: string; done: number; total: number;
   error: { code: string; message: string } | null;
-  result: PreviewResult | DatasetBuildResult | null;
+  result: PreviewResult | DatasetBuildResult | PredictionResult | Record<string, any> | null;
 };
 
 export class ApiError extends Error {
@@ -166,6 +175,18 @@ export const api = {
   generationRun: (id: string) => request<GenerationRun>("GET", `/api/generation/runs/${id}`),
   cancelGeneration: (id: string) => request<GenerationRun>("POST", `/api/generation/runs/${id}/cancel`),
   previewImageUrl: (runId: string, image: string) => `/api/generation/runs/${runId}/images/${image}`,
+  startDvcImport: (value: Record<string, unknown>) => request<GenerationRun>("POST", "/api/datasets/dvc", value),
+  startPrediction: (value: Record<string, unknown>) => request<GenerationRun>("POST", "/api/predictions", value),
+  studyOptions: () => request<{ training: string[]; recipe: string[]; objectives: string[] }>("GET", "/api/studies/options"),
+  planStudy: (value: Record<string, unknown>) => request<{ planned_trials: number }>("POST", "/api/studies/plan", value),
+  createStudy: (value: Record<string, unknown>) =>
+    request<{ study_id: string; planned_trials: number }>("POST", "/api/studies", value),
+  studies: () => request<any[]>("GET", "/api/studies"),
+  study: (id: string) => request<any>("GET", `/api/studies/${id}`),
+  stopStudy: (id: string, active: "finish" | "cancel") => request<any>("POST", `/api/studies/${id}/stop?active=${active}`),
+  resumeStudy: (id: string) => request<any>("POST", `/api/studies/${id}/resume`),
+  repeatStudy: (id: string, value: { top: number; seeds: number[] }) =>
+    request<{ study_id: string; planned_trials: number }>("POST", `/api/studies/${id}/repeat`, value),
 };
 
 export const TERMINAL = new Set(["finished", "failed", "cancelled", "interrupted"]);

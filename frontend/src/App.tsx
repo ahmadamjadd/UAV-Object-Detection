@@ -5,9 +5,11 @@ import {
 import { Datasets } from "./Datasets";
 import { Generate } from "./Generate";
 import { TrainingForm } from "./Training";
+import { Evaluate } from "./Evaluate";
+import { Studies } from "./Studies";
 import { Weights } from "./Weights";
 
-type Section = "setup" | "datasets" | "generate" | "train" | "activity";
+type Section = "setup" | "datasets" | "generate" | "train" | "studies" | "evaluate" | "activity";
 
 export function App() {
   const [section, setSection] = useState<Section>("activity");
@@ -30,16 +32,22 @@ export function App() {
           <span className="badge">Fixture mode: no real model training yet</span>
         )}
         <nav>
-          {(["setup", "datasets", "generate", "train", "activity"] as Section[]).map((name) => (
+          {(["setup", "datasets", "generate", "train", "studies", "evaluate", "activity"] as Section[]).map((name) => (
             <button key={name} className={section === name ? "active" : ""} onClick={() => setSection(name)}>
-              {{ setup: "Setup", datasets: "Datasets", generate: "Generate", train: "New training", activity: "Activity" }[name]}
+              {{ setup: "Setup", datasets: "Datasets", generate: "Generate", train: "New training", studies: "Studies", evaluate: "Evaluate", activity: "Activity" }[name]}
             </button>
           ))}
         </nav>
       </header>
       <main>
         {section === "setup" && <Setup capabilities={capabilities} />}
-        {section === "datasets" && <Datasets />}
+        {section === "datasets" && <Datasets capabilities={capabilities} />}
+        {section === "studies" && (
+          <Studies capabilities={capabilities} onOpenJob={(id) => { setSelected(id); setSection("activity"); }} />
+        )}
+        {section === "evaluate" && (
+          <Evaluate capabilities={capabilities} onSubmitted={(id) => { setSelected(id); setSection("activity"); }} />
+        )}
         {section === "generate" && (
           <Generate onTrain={(id) => { setTrainDataset(id); setSection("train"); }} />
         )}
@@ -199,7 +207,9 @@ function JobPanel({ jobId }: { jobId: string }) {
 
   return (
     <div className="card">
-      <h2>Job <code>{jobId.slice(0, 8)}</code></h2>
+      <h2>{job?.resolved?.kind === "evaluate" ? "Evaluation" : "Job"} <code>{jobId.slice(0, 8)}</code></h2>
+      {job?.resolved?.kind === "evaluate" && <p className="muted">Scores the model from job{" "}
+        <code>{String(job.resolved.checkpoint_job_id).slice(0, 8)}</code> on {String(job.resolved.dataset_id)}.</p>}
       {job && (
         <>
           <p><span className={`state ${job.execution_state}`}>{job.execution_state}</span>

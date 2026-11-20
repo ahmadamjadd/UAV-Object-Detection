@@ -36,7 +36,8 @@ button:disabled { opacity: 0.55; cursor: default; }
 .badge.small { margin-left: 6px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
 .grid.wide { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
-@media (max-width: 800px) { .grid.wide { grid-template-columns: 1fr; } }
+.grid.wide-right { grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); }
+@media (max-width: 800px) { .grid.wide, .grid.wide-right { grid-template-columns: 1fr; } }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
 .card.narrow { max-width: 520px; }
 .card h2 { font-size: 1.05rem; margin: 0 0 12px; }
@@ -103,3 +104,7 @@ table.compact tr { cursor: default; }
 .row input, .row select { width: 100%; min-width: 0; }
 .hint { overflow-wrap: anywhere; }
 .row input[type="checkbox"], .row input[type="radio"] { width: auto; }
+.badge.role-validation { background: #e6efff; color: var(--accent); }
+.badge.role-test { background: #fde8e6; color: var(--bad); }
+.param { border: 1px dashed var(--line); border-radius: 6px; padding: 8px; display: grid; gap: 6px; }
+select[multiple] { min-height: 6em; }

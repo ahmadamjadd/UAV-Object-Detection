@@ -3,6 +3,7 @@
 import math
 import re
 
+from foxtrot.config.evaluation import EVALUATION_CONFIG, EVALUATION_CONFIG_NAME
 from foxtrot.config.job import JobSpec
 from foxtrot.config.result import JobResult
 from foxtrot.config.tracking import TrackingOperation
@@ -20,10 +21,17 @@ UPLOADED_ARTIFACTS = (
 )
 
 
-# MLflow parameters describing how a generated dataset was made and split (V2).
+# MLflow parameters describing where a dataset came from: generated (V2) or DVC (V4).
 def generation_params(provenance: dict | None) -> dict[str, str]:
     if not provenance:
         return {}
+    if provenance.get("source") == "dvc":
+        values = {"dataset.dvc.repository": provenance.get("repository"),
+                  "dataset.dvc.revision": provenance.get("revision"),
+                  "dataset.dvc.commit": provenance.get("commit"),
+                  "dataset.dvc.path": provenance.get("path"),
+                  "dataset.dvc.md5": provenance.get("dvc_md5")}
+        return {key: str(value) for key, value in values.items() if value is not None}
     recipe, split = provenance.get("recipe", {}), provenance.get("split", {})
     counts, backgrounds = provenance.get("counts", {}), provenance.get("backgrounds", {})
     values = {
@@ -40,6 +48,8 @@ def generation_params(provenance: dict | None) -> dict[str, str]:
         "dataset.split.group_by_background": split.get("group_by_background"),
         "dataset.split.train_images": counts.get("train"),
         "dataset.split.validation_images": counts.get("val"),
+        "dataset.generation.frozen_validation_sha256": provenance.get("frozen_validation_sha256"),
+        "dataset.generation.study_id": provenance.get("study_id"),
     }
     return {key: str(value).lower() if isinstance(value, bool) else str(value)
             for key, value in values.items() if value is not None}
@@ -77,7 +87,7 @@ def _flatten(prefix: str, value, into: dict[str, str]) -> None:
 def build_tracking_plan(
     *, result: JobResult, resolved: JobSpec, resolved_sha256: str, adapter: str, fixture: bool,
     dataset: DatasetInput, pipeline: PipelineResult | None, artifact_names: set[str],
-    epoch_progress=(), dataset_provenance: dict | None = None,
+    epoch_progress=(), dataset_provenance: dict | None = None, plot_artifacts=(),
 ) -> list[TrackingOperation]:
     job_id = result.job_id
     params: dict[str, str] = {}
@@ -86,7 +96,11 @@ def build_tracking_plan(
         "foxtrot.resolved_sha256": resolved_sha256,
         "dataset.content_sha256": dataset.metadata.content_sha256,
         "dataset.class_names": ",".join(dataset.metadata.class_names),
+        "dataset.role": dataset.metadata.role,
     })
+    if resolved.kind == "evaluate":  # V4: scores always come from the fixed evaluation settings
+        params["evaluation.config"] = EVALUATION_CONFIG_NAME
+        params.update({f"evaluation.{key}": str(value) for key, value in EVALUATION_CONFIG.items()})
     params.update(generation_params(dataset_provenance))
     # V3: the model's actual starting weights, traceable to the reported results.
     if pipeline is not None and pipeline.training.initialization is not None:
@@ -96,7 +110,9 @@ def build_tracking_plan(
     operations = [
         TrackingOperation(operation="create_run", payload={
             "run_name": f"foxtrot-{job_id[:8]}",
-            "tags": {JOB_TAG: job_id, "foxtrot.adapter": adapter,
+            "tags": {JOB_TAG: job_id, "foxtrot.adapter": adapter, "foxtrot.kind": resolved.kind,
+                     **({"foxtrot.study_id": resolved.study.study_id,
+                         "foxtrot.trial_number": str(resolved.study.trial_number)} if resolved.study else {}),
                      "foxtrot.fixture": str(fixture).lower(), "foxtrot.outcome": result.outcome},
         }),
         TrackingOperation(operation="log_params", payload={"params": params}),
@@ -112,6 +128,10 @@ def build_tracking_plan(
             ("eval/precision", evaluation.precision), ("eval/recall", evaluation.recall),
             ("eval/mAP50", evaluation.map50), ("eval/mAP50-95", evaluation.map50_95),
         )]
+        for name, value in (evaluation.per_class_map50_95 or {}).items():
+            key = f"eval/class/{name}/mAP50-95"
+            if METRIC_KEY.fullmatch(key):
+                metrics.append({"key": key, "value": value, "step": step})
     if metrics:
         operations.append(TrackingOperation(operation="log_metrics", payload={"metrics": metrics}))
     for name, artifact_path in UPLOADED_ARTIFACTS:
@@ -119,5 +139,8 @@ def build_tracking_plan(
             operations.append(TrackingOperation(operation="log_artifact", payload={
                 "name": name, "artifact_path": artifact_path,
             }))
+    for name in plot_artifacts:  # V4 evaluation plots (confusion matrix, PR curves)
+        operations.append(TrackingOperation(operation="log_artifact", payload={
+            "name": name, "artifact_path": "evaluation"}))
     operations.append(TrackingOperation(operation="set_terminated", payload={"status": STATUS[result.outcome]}))
     return operations

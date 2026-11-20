@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 from foxtrot.config.result import JobResult
 from foxtrot.persistence.artifacts import record_job_artifact
 from foxtrot.persistence.dataset_generation import load_generation_provenance
+from foxtrot.persistence.dvc_datasets import load_dvc_provenance
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.files import job_file, sync_directory, write_new_text
 from foxtrot.persistence.jobs import JobClaim, JobRecord
@@ -41,7 +42,18 @@ def accept_pipeline_result(
         raise ValueError("Checkpoint hash does not match the pipeline result")
     record_job_artifact(workspace, checkout, claim.job_id, "pipeline-result", "output/pipeline-result.json")
     record_job_artifact(workspace, checkout, claim.job_id, "data-yaml", "output/data.yaml")
+    # V4: evaluation plots must be PNG files directly inside output/evaluation/.
+    for plot in result.plots:
+        parts = PurePosixPath(plot).parts
+        if parts[:2] != ("output", "evaluation") or len(parts) != 3 or not plot.endswith(".png"):
+            raise ValueError("Evaluation plots must be PNG files in output/evaluation")
+        record_job_artifact(workspace, checkout, claim.job_id, plot_artifact_name(plot), plot)
     return result
+
+
+# Registered artifact name for one evaluation plot, e.g. "plot-confusion_matrix".
+def plot_artifact_name(relative_path: str) -> str:
+    return "plot-" + PurePosixPath(relative_path).stem.replace(" ", "_")
 
 
 # Every per-epoch progress update this job saved, in order (read page by page).
@@ -78,8 +90,11 @@ def record_pipeline_outcome(
     sync_directory(claim.directory)
     record_job_artifact(workspace, checkout, claim.job_id, "job-result", "result.json")
     names = {"checkpoint", "pipeline-result", "data-yaml"} if finished else set()
-    # A generated dataset's recipe/split record travels with the job to MLflow (V2).
-    provenance = load_generation_provenance(request.dataset)
+    plots = {plot_artifact_name(p): p for p in pipeline.plots} if finished and pipeline else {}
+    if request.resolved.kind == "evaluate":
+        names.discard("checkpoint")  # already uploaded with the job that trained it
+    # A generated (V2) or DVC (V4) dataset's provenance travels with the job to MLflow.
+    provenance = load_generation_provenance(request.dataset) or load_dvc_provenance(request.dataset)
     if provenance is not None:
         write_new_text(claim.directory / "dataset-provenance.json", json.dumps(provenance, indent=2))
         sync_directory(claim.directory)
@@ -91,7 +106,7 @@ def record_pipeline_outcome(
         dataset=request.dataset, pipeline=pipeline,
         artifact_names=names | {"job-result", "summary"},
         epoch_progress=_epoch_progress(workspace, checkout, claim.job_id),
-        dataset_provenance=provenance,
+        dataset_provenance=provenance, plot_artifacts=sorted(plots),
     )
     enqueue_tracking(workspace, checkout, claim.job_id, plan)
     return result

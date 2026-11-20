@@ -14,7 +14,7 @@ import traceback
 from typing import Literal
 
 from foxtrot.config.checkpoint import CheckpointReference
-from foxtrot.config.evaluation import EvaluationResult
+from foxtrot.config.evaluation import EVALUATION_CONFIG, EvaluationResult
 from foxtrot.config.models import get_model
 from foxtrot.config.training import ultralytics_arguments
 from foxtrot.persistence.files import fingerprint, job_file
@@ -192,8 +192,9 @@ class UltralyticsEvaluator:
         YOLO = _load_ultralytics(job / "output")
         model = YOLO(str(checkpoint))  # remembers its training image size, so scoring matches training
         try:
-            results = model.val(data=str(data_yaml), split="val", device="cpu", batch=16, plots=False,
-                                verbose=False, project=str(job / "output"), name="evaluation", exist_ok=False)
+            results = model.val(data=str(data_yaml), device="cpu", plots=request.plots, verbose=False,
+                                project=str(job / "output"), name="evaluation", exist_ok=False,
+                                **EVALUATION_CONFIG)
         except Exception as error:
             traceback.print_exc()
             raise PipelineFailure("evaluation_failed",
@@ -208,6 +209,7 @@ class UltralyticsEvaluator:
             dataset_sha256=request.dataset.metadata.content_sha256,
             checkpoint=request.checkpoint,
             precision=_score(box.mp), recall=_score(box.mr), map50=_score(box.map50), map50_95=_score(box.map),
+            per_class_map50_95={name: _score(value) for name, value in per_class.items()},
         )
 
 

@@ -1,4 +1,4 @@
-"""Start, watch and cancel dataset-generation runs for the website (V2).
+"""Start, watch and cancel background runs for the website (V2 generation; V4 DVC and previews).
 
 Each run gets a folder ``generation/runs/<run-id>/`` holding its request,
 status, log and (for previews) sample images. The run itself is a separate
@@ -13,7 +13,6 @@ import sys
 import threading
 from uuid import uuid4
 
-from foxtrot.config.generation import GenerationRequest
 from foxtrot.persistence.dataset_generation import generation_root
 from foxtrot.persistence.files import write_new_text
 from foxtrot.persistence.workspace import initialize_workspace
@@ -52,15 +51,17 @@ class GenerationRuns:
     def _running(self) -> bool:
         return self._active is not None and self._active[1].poll() is None
 
-    # Start a preview or full dataset run in its own process; returns its first status.
-    def start(self, kind: str, request: GenerationRequest) -> dict:
+    # Start a run in its own process; returns its first status. `request` matches the kind:
+    # GenerationRequest (preview/dataset), DvcImportRequest (dvc) or PredictionRequest (predict).
+    def start(self, kind: str, request) -> dict:
         with self._lock:
             if self._running():
                 raise GenerationBusy("Another generation is still running; wait for it or cancel it")
             run_id = uuid4().hex
             folder = self._runs() / run_id
             folder.mkdir()
-            write_new_text(folder / REQUEST, RunRequest(kind=kind, request=request).model_dump_json(indent=2))
+            field = {"preview": "request", "dataset": "request", "dvc": "dvc", "predict": "predict"}[kind]
+            write_new_text(folder / REQUEST, RunRequest(kind=kind, **{field: request}).model_dump_json(indent=2))
             status = {"run_id": run_id, "kind": kind, "state": "queued", "phase": "queued", "done": 0, "total": 0,
                       "created_at": now(), "error": None, "result": None}
             write_new_text(folder / STATUS, json.dumps(status, indent=2))

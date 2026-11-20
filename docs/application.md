@@ -103,6 +103,18 @@ report. `POST /api/jobs` additionally refuses an unusable start checkpoint (422)
 The New training screen is built from the schema and has a JSON editor. See
 [training.md](training.md#models-and-settings-v3).
 
+## Added in V4
+
+Dataset `role` (training / validation / test); evaluation jobs (`kind: "evaluate"`);
+`POST /api/datasets/dvc` and `POST /api/predictions` run in the shared background
+runner; an **Evaluate** screen. See [evaluation.md](evaluation.md).
+
+## Added in V5/V6
+
+A **Studies** screen and `/api/studies/...` endpoints; the launcher also starts the study
+coordinator (one per workspace). Study trial jobs carry `study` in their specification. See
+[studies.md](studies.md).
+
 ## Limits
 
 - Progress uses 1-second polling with the event cursor; Server-Sent Events can come with V1.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  api, DatasetBuildResult, describeError, GenerationRequest, GenerationRun, PreviewResult, Range,
+  api, DatasetBuildResult, describeError, GenerationRequest, GenerationRun, PreviewBox, PreviewResult, Range,
 } from "./api";
 import { ReportView } from "./Datasets";
 
@@ -157,23 +157,33 @@ function PreviewGallery({ runId, preview }: { runId: string; preview: PreviewRes
     <>
       <p className="muted">{preview.images.length} samples · canvas {preview.canvas_size}px · seed {preview.seed} ·
         {" "}{preview.background_count} backgrounds</p>
-      <div className="gallery">
-        {preview.images.map((item) => (
-          <figure key={item.image}>
-            <div className="sample">
-              <img src={api.previewImageUrl(runId, item.image)} alt={item.image} />
-              {item.boxes.map((box, index) => (
-                <div key={index} className="box" style={{
-                  left: `${(box.x - box.width / 2) * 100}%`, top: `${(box.y - box.height / 2) * 100}%`,
-                  width: `${box.width * 100}%`, height: `${box.height * 100}%`,
-                }}><span>{box.class_name}</span></div>
-              ))}
-            </div>
-            <figcaption className="muted">{item.image} · {item.background}</figcaption>
-          </figure>
-        ))}
-      </div>
+      <BoxGallery runId={runId} items={preview.images.map((item) => ({
+        image: item.image, caption: `${item.image} · ${item.background}`, boxes: item.boxes }))} />
     </>
+  );
+}
+
+// Images with boxes drawn on top (label boxes for previews, predicted boxes for V4 previews).
+export function BoxGallery({ runId, items }: {
+  runId: string; items: { image: string; caption: string; boxes: (PreviewBox & { confidence?: number })[] }[];
+}) {
+  return (
+    <div className="gallery">
+      {items.map((item) => (
+        <figure key={item.image}>
+          <div className="sample">
+            <img src={api.previewImageUrl(runId, item.image)} alt={item.image} />
+            {item.boxes.map((box, index) => (
+              <div key={index} className="box" style={{
+                left: `${(box.x - box.width / 2) * 100}%`, top: `${(box.y - box.height / 2) * 100}%`,
+                width: `${box.width * 100}%`, height: `${box.height * 100}%`,
+              }}><span>{box.class_name}{box.confidence !== undefined ? ` ${box.confidence.toFixed(2)}` : ""}</span></div>
+            ))}
+          </div>
+          <figcaption className="muted">{item.caption}</figcaption>
+        </figure>
+      ))}
+    </div>
   );
 }
 

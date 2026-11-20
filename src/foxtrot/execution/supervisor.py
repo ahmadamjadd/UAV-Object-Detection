@@ -93,6 +93,13 @@ class Supervisor:
                         code="dataset_unavailable",
                         message=f"Dataset {resolved.dataset_id} is not registered, is unsafe, or changed.",
                     ))
+                # V4: real validation/test data is never trained on; evaluations need labeled real data.
+                if (resolved.kind == "train") != (dataset.metadata.role == "training"):
+                    return self.phase(claim, ExecutionState.FAILED, error=ErrorDetails(
+                        code="dataset_role",
+                        message=f"Dataset {resolved.dataset_id} is a {dataset.metadata.role} dataset and "
+                                f"cannot be used for a {resolved.kind} job.",
+                    ))
             for name in ("logs", "output"):
                 (directory / name).mkdir(exist_ok=False)
             common = dict(

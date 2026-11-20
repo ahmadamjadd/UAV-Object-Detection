@@ -59,3 +59,28 @@ def locate_start_checkpoint(workspace_root: Path, job_id: str, model_id: str) ->
     if digest != result.checkpoint.sha256:
         raise StartCheckpointError(f"Job {job_id[:8]}'s checkpoint changed after it finished")
     return path, digest
+
+
+# V4 submission rules for the dataset a job uses:
+# - training jobs only use "training" datasets (real validation/test images are never trained on);
+# - evaluation jobs only use "validation"/"test" datasets whose classes match the checkpoint's.
+def check_dataset_use(workspace_root: str | Path, source_checkout: str | Path, spec: JobSpec) -> None:
+    from .datasets import list_datasets
+
+    manifests = {m.dataset_id: m for m in list_datasets(workspace_root, source_checkout)}
+    dataset = manifests.get(spec.dataset_id)
+    if dataset is None:
+        return  # not registered (yet): the worker refuses it visibly when the job starts
+    if spec.kind == "train":
+        if dataset.role != "training":
+            raise StartCheckpointError(f"{spec.dataset_id} is a {dataset.role} dataset: it can only score models")
+        return
+    if dataset.role == "training":
+        raise StartCheckpointError(f"{spec.dataset_id} is a training dataset; evaluate on a validation or test dataset")
+    earlier = JobSpec.model_validate_json(
+        load_job_configurations(workspace_root, source_checkout, spec.checkpoint_job_id).resolved_json)
+    trained_on = manifests.get(earlier.dataset_id)
+    if trained_on is not None and trained_on.class_names != dataset.class_names:
+        raise StartCheckpointError(
+            f"Class mismatch: the model knows {', '.join(trained_on.class_names)} but {spec.dataset_id} has "
+            f"{', '.join(dataset.class_names)} (same names in the same order are required)")

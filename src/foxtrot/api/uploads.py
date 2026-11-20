@@ -62,7 +62,7 @@ class UploadScheduler:
             self._wake.clear()
             if self._stop.is_set():
                 break
-            if not jobs_with_pending_tracking(self.workspace, self.checkout):
+            if not jobs_with_pending_tracking(self.workspace, self.checkout) and not self._studies_waiting():
                 self.delay = self.interval
                 continue
             succeeded = self.run_once()
@@ -91,7 +91,17 @@ class UploadScheduler:
                 return False
             if isinstance(self.last_results, dict):  # {"busy": true}: someone else is uploading
                 return True
-            return all(result.get("tracking_state") == "synced" for result in self.last_results)
+            # A deferred study trial is not a failure: it uploads once its outcome is recorded.
+            return all(result.get("tracking_state") == "synced" or result.get("deferred")
+                       for result in self.last_results)
+
+    # True when an ended study still needs its MLflow parent run closed (V5).
+    def _studies_waiting(self) -> bool:
+        from foxtrot.studies.tracking import studies_awaiting_finalize
+        try:
+            return studies_awaiting_finalize(self.workspace, self.checkout)
+        except (OSError, ValueError):
+            return False
 
     # A short summary for the website.
     def status(self) -> dict:

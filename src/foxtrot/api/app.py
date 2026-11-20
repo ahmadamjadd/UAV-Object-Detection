@@ -22,17 +22,20 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from foxtrot.config.generation import GenerationRecipe, GenerationRequest, SplitSettings
 from foxtrot.config.job import JobSpec
 from foxtrot.config.models import MODELS
+from foxtrot.config.study import OBJECTIVES, RECIPE_RANGES, RECIPE_SCALARS, StudySpec, planned_trials
 from foxtrot.config.result import JobResult
 from foxtrot.config.training import GROUPS, TrainingSettings
 from foxtrot.config.snapshot import resolve_job
 from foxtrot.persistence.commands import request_cancel
 from foxtrot.persistence.database import DATABASE_SCHEMA_VERSION, initialize_database
-from foxtrot.persistence.dataset_import import import_dataset
+from foxtrot.persistence.dataset_import import import_dataset, import_evaluation_dataset
+from foxtrot.persistence.dvc_datasets import DvcImportRequest
+from foxtrot.pipeline.prediction import PredictionRequest
 from foxtrot.persistence.datasets import DatasetUnavailable, list_datasets
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.models import WeightsError, install_weights, list_weights
 from foxtrot.persistence.files import job_file, job_path
-from foxtrot.persistence.start_checkpoints import StartCheckpointError, check_start_checkpoint
+from foxtrot.persistence.start_checkpoints import StartCheckpointError, check_dataset_use, check_start_checkpoint
 from foxtrot.persistence.jobs import (
     JobRecord, create_recorded_job, get_job_record, list_job_records, load_job_configurations,
 )
@@ -67,6 +70,18 @@ class DatasetImport(BaseModel):
     train_images_ref: str = "train/images"
     validation_images_ref: str = "val/images"
     missing_labels: typing.Literal["background", "error"] = "background"
+    # V4: real labeled images that only score models; optionally divided into validation and test.
+    role: typing.Literal["training", "validation", "test"] = "training"
+    images_ref: str = "images"
+    test_share: float = Field(default=0.0, ge=0.0, le=0.9)
+
+
+# V6: which completed trials to repeat (best first) and under which seeds.
+class RepeatRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    top: int = Field(default=1, ge=1, le=5)
+    seeds: list[int] = Field(min_length=2, max_length=10)
 
 
 def _choices(model, field: str) -> list[str]:
@@ -103,6 +118,8 @@ def create_app(
     app.state.weights_opener = urllib.request.urlopen  # replaced in tests: no real downloads
     app.state.uploads = UploadScheduler(workspace_root, source_checkout)  # started by the launcher
     app.state.generation = GenerationRuns(workspace_root, source_checkout)  # dataset generation runs
+    from foxtrot.studies.coordinator import StudyCoordinator
+    app.state.studies = StudyCoordinator(Path(workspace_root), Path(source_checkout))  # started by the launcher
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOOPBACK_HOSTS))
     workspace, checkout = app.state.workspace, app.state.checkout
 
@@ -144,6 +161,8 @@ def create_app(
             "active_pipeline_adapter": app.state.pipeline_adapter,
             "real_training": app.state.pipeline_adapter == "ultralytics",
             "tracking_destinations": [d["destination_id"] for d in app.state.settings.destinations()],
+            "dvc_default_repository": str(generator_directory().parents[1])
+            if (generator_directory().parents[1] / ".dvc").is_dir() else None,
         }
 
     # The job schema (the form is built from it) plus the order and titles of setting groups.
@@ -169,7 +188,7 @@ def create_app(
                     job_file(job_path(workspace.resolve(), record.job_id), "result.json").read_bytes())
             except (ValueError, OSError):
                 continue
-            if result.checkpoint is None:
+            if result.checkpoint is None or spec.kind != "train":  # evaluations do not make new checkpoints
                 continue
             found.append({"job_id": record.job_id, "model_id": spec.model_id, "dataset_id": spec.dataset_id,
                           "finished_at": record.finished_at,
@@ -266,8 +285,10 @@ def create_app(
             resolved = resolve_job(submission.request)
         except ValidationError as error:
             raise HTTPException(status_code=422, detail=error.errors(include_url=False, include_input=False)) from error
-        try:  # an earlier job's checkpoint must exist, be finished, unchanged, and the same model
-            check_start_checkpoint(workspace, checkout, JobSpec.model_validate_json(resolved.resolved_json))
+        try:  # an earlier job's checkpoint must exist, be finished, unchanged, and the same model;
+            spec = JobSpec.model_validate_json(resolved.resolved_json)  # and the dataset must suit the job
+            check_start_checkpoint(workspace, checkout, spec)
+            check_dataset_use(workspace, checkout, spec)
         except StartCheckpointError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         try:
@@ -324,6 +345,19 @@ def create_app(
     # Check and import a dataset folder; an invalid dataset returns its report without importing.
     @app.post("/api/datasets", dependencies=guarded)
     def import_local_dataset(body: DatasetImport):
+        if body.role != "training":
+            if 0 < body.test_share < 0.05:
+                raise HTTPException(status_code=422, detail="Test share must be 0 or at least 0.05")
+            try:
+                found, report = import_evaluation_dataset(
+                    workspace, checkout, source=body.source.strip(), dataset_id=body.dataset_id.strip(),
+                    class_names=tuple(name.strip() for name in body.class_names), role=body.role,
+                    images_ref=body.images_ref, test_share=body.test_share)
+            except (DatasetUnavailable, ValueError) as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
+            return {"imported": bool(found), "dataset": found[0].metadata.model_dump(mode="json") if found else None,
+                    "datasets": [d.metadata.model_dump(mode="json") for d in found],
+                    "report": report.model_dump(mode="json")}
         try:
             dataset, report = import_dataset(
                 workspace, checkout, source=body.source.strip(), dataset_id=body.dataset_id.strip(),
@@ -352,9 +386,124 @@ def create_app(
     def generation_dataset(body: GenerationRequest):
         return start_generation("dataset", body)
 
+    # V4: download a dataset version from Git/DVC in the background (same run tracking as generation).
+    @app.post("/api/datasets/dvc", dependencies=guarded)
+    def dvc_dataset(body: DvcImportRequest):
+        try:
+            return app.state.generation.start("dvc", body)
+        except GenerationBusy as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    # V4: run an exact checkpoint on unlabeled photos and show its boxes (no accuracy).
+    @app.post("/api/predictions", dependencies=guarded)
+    def prediction_preview(body: PredictionRequest):
+        try:
+            return app.state.generation.start("predict", body)
+        except GenerationBusy as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @app.post("/api/generation/runs/{run_id}/cancel", dependencies=guarded)
     def generation_cancel(run_id: str):
         return app.state.generation.cancel(run_id)
+
+    # --------------------------------------------------------- V5/V6 studies
+
+    # What the study form needs: tunable settings, recipe parameters, objectives, samplers.
+    @app.get("/api/studies/options")
+    def study_options():
+        return {"training": [name for name in TrainingSettings.model_fields if name != "device"],
+                "recipe": sorted(f"recipe.{n}" for n in RECIPE_SCALARS)
+                + sorted(f"recipe.{r}.{end}" for r in RECIPE_RANGES for end in ("low", "span")),
+                "objectives": list(OBJECTIVES), "samplers": ["grid", "random", "tpe"],
+                "schema": StudySpec.model_json_schema()}
+
+    # Check a study definition and count its trials without starting it.
+    @app.post("/api/studies/plan", dependencies=guarded)
+    def plan_study(spec: StudySpec):
+        return {"planned_trials": planned_trials(spec)}
+
+    @app.get("/api/studies")
+    def studies():
+        from foxtrot.studies.store import list_study_ids, read_study, read_trials
+        from foxtrot.studies.summary import summarize
+        found = []
+        for study_id in list_study_ids(workspace, checkout):
+            spec, record, state = read_study(workspace, checkout, study_id)
+            summary = summarize(spec, record, state, read_trials(workspace, checkout, study_id))
+            found.append({"study_id": study_id, "name": spec.name, "created_at": record["created_at"],
+                          "state": state["state"], "planned_trials": record["planned_trials"],
+                          "trials_started": summary["trials_started"], "best": summary["best"]})
+        return found
+
+    @app.get("/api/studies/{study_id}")
+    def study(study_id: str):
+        from foxtrot.studies.store import read_study, read_trials, study_folder
+        from foxtrot.studies.summary import summarize
+        spec, record, state = read_study(workspace, checkout, study_id)
+        trials = read_trials(workspace, checkout, study_id)
+        mlflow = study_folder(workspace, checkout, study_id) / "mlflow.json"
+        return {"study_id": study_id, "spec": spec.model_dump(mode="json"), "record": record, "state": state,
+                "trials": trials, "summary": summarize(spec, record, state, trials),
+                "mlflow": json.loads(mlflow.read_text()) if mlflow.is_file() else {}}
+
+    @app.post("/api/studies", dependencies=guarded)
+    def create_study_endpoint(spec: StudySpec):
+        from foxtrot.studies.store import StudyError, create_study
+        try:
+            study_id = create_study(workspace, checkout, spec)
+        except StudyError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        app.state.studies.trigger()
+        return {"study_id": study_id, "planned_trials": planned_trials(spec)}
+
+    # Stop launching trials; the active trial either finishes or is cancelled.
+    @app.post("/api/studies/{study_id}/stop", dependencies=guarded)
+    def stop_study_endpoint(study_id: str, active: typing.Literal["finish", "cancel"] = "finish"):
+        from foxtrot.studies.coordinator import stop_study
+        try:
+            state = stop_study(workspace, checkout, study_id, active)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        app.state.studies.trigger()
+        return state
+
+    # Continue a stopped/finished study within its remaining budget (completed trials are kept).
+    @app.post("/api/studies/{study_id}/resume", dependencies=guarded)
+    def resume_study_endpoint(study_id: str):
+        from foxtrot.studies.coordinator import resume_study
+        try:
+            state = resume_study(workspace, checkout, study_id)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        app.state.studies.trigger()
+        return state
+
+    # V6: repeat the best configurations of a study under several training seeds (a new repeat study).
+    @app.post("/api/studies/{study_id}/repeat", dependencies=guarded)
+    def repeat_study_endpoint(study_id: str, body: RepeatRequest):
+        from foxtrot.studies.store import StudyError, create_study, read_study, read_trials
+        spec, _, _ = read_study(workspace, checkout, study_id)
+        if spec.recipe is not None:
+            raise HTTPException(status_code=409, detail="Repeating recipe-study trials is not supported yet: "
+                                "each trial has its own generated dataset")
+        complete = sorted((t for t in read_trials(workspace, checkout, study_id) if t["state"] == "complete"),
+                          key=lambda t: -t["value"])[:body.top]
+        if not complete:
+            raise HTTPException(status_code=409, detail="The study has no completed trial to repeat")
+        repeats = [{"model_id": t["model_id"], "seed": seed, "source_trial": t["number"],
+                    "training": {k: v for k, v in t["training"].items() if k != "seed"}}
+                   for t in complete for seed in body.seeds]
+        try:
+            repeat = StudySpec.model_validate({**spec.model_dump(mode="json"), "name": f"{spec.name} (repeats)",
+                                               "sampler": "repeat", "search_space": [], "repeats": repeats,
+                                               "base_training": {}, "pruning": False, "recipe": None,
+                                               "dataset_id": spec.dataset_id or complete[0]["dataset_id"],
+                                               "model_ids": sorted({t["model_id"] for t in complete})})
+            new_id = create_study(workspace, checkout, repeat)
+        except (ValidationError, StudyError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        app.state.studies.trigger()
+        return {"study_id": new_id, "planned_trials": len(repeats)}
 
     # ------------------------------------------------------------ interface
 

@@ -1,4 +1,7 @@
-"""Separate process that runs one generation request (preview or full dataset).
+"""Separate process that runs one background request for the website.
+
+Kinds: "preview"/"dataset" (V2 generation), "dvc" (V4 dataset download) and
+"predict" (V4 prediction preview on unlabeled images).
 
     python -m foxtrot.pipeline.generation_runner --workspace W --source-checkout C --run RUN_FOLDER
 
@@ -20,18 +23,22 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 from foxtrot.config.generation import GenerationRequest
+from foxtrot.persistence.dvc_datasets import DvcImportRequest
 from foxtrot.pipeline.contracts import PipelineCancelled, PipelineFailure
+from foxtrot.pipeline.prediction import PredictionRequest
 
 REQUEST, STATUS, CANCEL, PREVIEW = "request.json", "status.json", "cancel", "preview"
 FINAL_STATES = {"finished", "failed", "cancelled", "interrupted"}
 
 
-# What the website asked this run to do.
+# What the website asked this run to do; exactly the field for its kind is set.
 class RunRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    kind: Literal["preview", "dataset"]
-    request: GenerationRequest
+    kind: Literal["preview", "dataset", "dvc", "predict"]
+    request: GenerationRequest | None = None
+    dvc: DvcImportRequest | None = None
+    predict: PredictionRequest | None = None
 
 
 # Current UTC time for status timestamps.
@@ -83,6 +90,17 @@ def run(workspace: Path, checkout: Path, folder: Path) -> int:
         order = RunRequest.model_validate_json((folder / REQUEST).read_bytes())
         if order.kind == "preview":
             result = generate_preview(workspace, checkout, order.request, folder / PREVIEW, reporter)
+        elif order.kind == "dvc":
+            from foxtrot.persistence.dvc_datasets import import_dvc_dataset
+            dataset, provenance = import_dvc_dataset(workspace, checkout, order.dvc, reporter)
+            result = {"dataset_id": dataset.metadata.dataset_id, "role": dataset.metadata.role,
+                      "commit": provenance["commit"], "dvc_md5": provenance["dvc_md5"],
+                      "class_names": list(dataset.metadata.class_names)}
+        elif order.kind == "predict":
+            from foxtrot.persistence.workspace import initialize_workspace
+            from foxtrot.pipeline.prediction import predict_preview
+            result = predict_preview(initialize_workspace(workspace, checkout), order.predict,
+                                     folder / PREVIEW, reporter)
         else:
             built = build_generated_dataset(workspace, checkout, order.request, reporter)
             provenance = built.provenance

@@ -39,7 +39,8 @@ EXECUTION_TRANSITIONS = MappingProxyType({
     ExecutionState.DRAFT: frozenset({ExecutionState.VALIDATING, ExecutionState.CANCELLED}),
     ExecutionState.VALIDATING: frozenset({ExecutionState.QUEUED, ExecutionState.FAILED, ExecutionState.CANCELLED}),
     ExecutionState.QUEUED: frozenset({ExecutionState.PREPARING, ExecutionState.FAILED, ExecutionState.CANCELLED}),
-    ExecutionState.PREPARING: frozenset({ExecutionState.TRAINING} | _STOP),
+    # PREPARING -> EVALUATING: V4 evaluation jobs score an existing checkpoint without training.
+    ExecutionState.PREPARING: frozenset({ExecutionState.TRAINING, ExecutionState.EVALUATING} | _STOP),
     ExecutionState.TRAINING: frozenset({ExecutionState.EVALUATING} | _STOP),
     ExecutionState.EVALUATING: frozenset({ExecutionState.FINISHED} | _STOP),
     **{state: frozenset() for state in TERMINAL_STATES},
