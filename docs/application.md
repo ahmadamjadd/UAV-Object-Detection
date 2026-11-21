@@ -115,6 +115,15 @@ A **Studies** screen and `/api/studies/...` endpoints; the launcher also starts 
 coordinator (one per workspace). Study trial jobs carry `study` in their specification. See
 [studies.md](studies.md).
 
+## Added in V7/V8
+
+A **Recovery** screen (`GET /api/recovery`) with resume / retry / new experiment /
+continue study; classified upload errors; "Training finished — upload pending" and an
+optional redirect after sync. Setup gains a system check (`GET /api/system/check`,
+`foxtrot --check`), the member name (`GET/PUT /api/profile`, `foxtrot.member` tag) and
+safe storage cleanup (`GET /api/storage`, `POST /api/storage/cleanup`). See
+[recovery.md](recovery.md) and [release.md](release.md).
+
 ## Limits
 
 - Progress uses 1-second polling with the event cursor; Server-Sent Events can come with V1.

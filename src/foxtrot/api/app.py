@@ -76,6 +76,20 @@ class DatasetImport(BaseModel):
     test_share: float = Field(default=0.0, ge=0.0, le=0.9)
 
 
+# V8: this installation's member name (shown in shared MLflow as foxtrot.member).
+class ProfileUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    member: str = Field(min_length=1, max_length=64)
+
+
+# V8: cleanup candidates to remove (IDs from GET /api/storage).
+class CleanupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[str] = Field(min_length=1, max_length=1000)
+
+
 # V6: which completed trials to repeat (best first) and under which seeds.
 class RepeatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -405,6 +419,80 @@ def create_app(
     @app.post("/api/generation/runs/{run_id}/cancel", dependencies=guarded)
     def generation_cancel(run_id: str):
         return app.state.generation.cancel(run_id)
+
+    # ------------------------------------------------------------ V8 setup, profile, storage
+
+    # Is this installation and workspace ready? (read-only)
+    @app.get("/api/system/check")
+    def system_check_endpoint():
+        from .system import system_check
+        return system_check(workspace, checkout, static_directory)
+
+    @app.get("/api/profile")
+    def profile():
+        from foxtrot.persistence.profile import read_profile
+        return read_profile(workspace, checkout)
+
+    @app.put("/api/profile", dependencies=guarded)
+    def save_profile_endpoint(body: ProfileUpdate):
+        from foxtrot.persistence.profile import save_profile
+        try:
+            return save_profile(workspace, checkout, body.member)
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    # Disk use per area and what can be removed safely.
+    @app.get("/api/storage")
+    def storage():
+        from foxtrot.persistence.cleanup import plan_cleanup, storage_usage
+        return {"usage": storage_usage(workspace, checkout),
+                "candidates": plan_cleanup(workspace, checkout, active_run=app.state.generation.active_run())}
+
+    # Remove chosen candidates; the plan is recomputed first, so only still-safe items go.
+    @app.post("/api/storage/cleanup", dependencies=guarded)
+    def cleanup(body: CleanupRequest):
+        from foxtrot.persistence.cleanup import apply_cleanup
+        return apply_cleanup(workspace, checkout, body.ids, active_run=app.state.generation.active_run())
+
+    # ------------------------------------------------------------ V7 recovery
+
+    # Everything that needs attention after a failure: what happened and what can be done.
+    @app.get("/api/recovery")
+    def recovery():
+        from foxtrot.persistence.start_checkpoints import RESUMABLE_STATES, StartCheckpointError, check_resume_source
+        from foxtrot.studies.store import list_study_ids, read_study, read_trials
+        interrupted, holds, uploads = [], [], []
+        for record in list_job_records(workspace, checkout, limit=500):
+            view = _job_view(record)
+            try:
+                spec = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, record.job_id).resolved_json)
+            except ValueError:
+                spec = None
+            if spec is not None:
+                view.update(kind=spec.kind, model_id=spec.model_id, dataset_id=spec.dataset_id,
+                            request=spec.model_dump(mode="json", exclude={"schema_version"}, exclude_none=True))
+            if record.recovery_required:
+                holds.append(view)
+            if spec is not None and spec.kind == "train" and record.execution_state in RESUMABLE_STATES:
+                try:  # can it continue from its last.pt with the same settings?
+                    check_resume_source(workspace, checkout, spec.model_copy(update={
+                        "initialization": "resume", "checkpoint_job_id": record.job_id, "study": None}))
+                    view.update(resumable=True, resume_reason=None)
+                except (StartCheckpointError, ValueError) as error:
+                    view.update(resumable=False, resume_reason=str(error))
+                interrupted.append(view)
+            if record.finished_at and record.tracking_state != "synced" and list_tracking(workspace, checkout, record.job_id):
+                uploads.append(view)
+        studies = []
+        for study_id in list_study_ids(workspace, checkout):
+            spec, record, state = read_study(workspace, checkout, study_id)
+            started = len(read_trials(workspace, checkout, study_id))
+            if state["state"] == "stopped" or (state["state"] == "finished" and started < record["planned_trials"]):
+                studies.append({"study_id": study_id, "name": spec.name, "state": state["state"],
+                                "reason": state.get("reason"), "trials_started": started,
+                                "planned_trials": record["planned_trials"]})
+        return {"interrupted": interrupted, "holds": holds, "uploads": uploads, "studies": studies,
+                "uploader": app.state.uploads.status()}
 
     # --------------------------------------------------------- V5/V6 studies
 

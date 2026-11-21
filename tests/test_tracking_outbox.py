@@ -117,7 +117,7 @@ class TrackingOutboxTests(unittest.TestCase):
         client = RecordingTrackingClient(fail_once={"log_metrics"})
         record = sync_job_tracking(self.workspace, self.checkout, job, client)
         self.assertEqual((record.execution_state, record.tracking_state), ("finished", "retrying"))
-        self.assertEqual(record.tracking_error.code, "tracking_upload_failed")
+        self.assertEqual(record.tracking_error.code, "tracking_unreachable")  # V7: a connection outage is named as such
         self.assertNotIn("outage", record.tracking_error.message)  # exception text is not saved
         pending = list_tracking(self.workspace, self.checkout, job, pending_only=True)
         self.assertEqual([e.operation.operation for e in pending][0], "log_metrics")

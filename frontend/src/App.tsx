@@ -7,9 +7,11 @@ import { Generate } from "./Generate";
 import { TrainingForm } from "./Training";
 import { Evaluate } from "./Evaluate";
 import { Studies } from "./Studies";
+import { Recovery } from "./Recovery";
 import { Weights } from "./Weights";
+import { Profile, Storage, SystemCheck } from "./SetupExtras";
 
-type Section = "setup" | "datasets" | "generate" | "train" | "studies" | "evaluate" | "activity";
+type Section = "setup" | "datasets" | "generate" | "train" | "studies" | "evaluate" | "activity" | "recovery";
 
 export function App() {
   const [section, setSection] = useState<Section>("activity");
@@ -17,6 +19,7 @@ export function App() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [trainDataset, setTrainDataset] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     api.health().then(() => setHealthy(true), () => setHealthy(false));
@@ -32,9 +35,9 @@ export function App() {
           <span className="badge">Fixture mode: no real model training yet</span>
         )}
         <nav>
-          {(["setup", "datasets", "generate", "train", "studies", "evaluate", "activity"] as Section[]).map((name) => (
+          {(["setup", "datasets", "generate", "train", "studies", "evaluate", "activity", "recovery"] as Section[]).map((name) => (
             <button key={name} className={section === name ? "active" : ""} onClick={() => setSection(name)}>
-              {{ setup: "Setup", datasets: "Datasets", generate: "Generate", train: "New training", studies: "Studies", evaluate: "Evaluate", activity: "Activity" }[name]}
+              {{ setup: "Setup", datasets: "Datasets", generate: "Generate", train: "New training", studies: "Studies", evaluate: "Evaluate", activity: "Activity", recovery: "Recovery" }[name]}
             </button>
           ))}
         </nav>
@@ -42,6 +45,10 @@ export function App() {
       <main>
         {section === "setup" && <Setup capabilities={capabilities} />}
         {section === "datasets" && <Datasets capabilities={capabilities} />}
+        {section === "recovery" && (
+          <Recovery onOpenJob={(id) => { setSelected(id); setSection("activity"); }}
+            onNewExperiment={(request) => { setDraft(request); setSection("train"); }} />
+        )}
         {section === "studies" && (
           <Studies capabilities={capabilities} onOpenJob={(id) => { setSelected(id); setSection("activity"); }} />
         )}
@@ -52,7 +59,7 @@ export function App() {
           <Generate onTrain={(id) => { setTrainDataset(id); setSection("train"); }} />
         )}
         {section === "train" && (
-          <TrainingForm capabilities={capabilities} initialDataset={trainDataset}
+          <TrainingForm key={JSON.stringify(draft)} capabilities={capabilities} initialDataset={trainDataset} initialRequest={draft}
             onSubmitted={(id) => { setSelected(id); setSection("activity"); }} />
         )}
         {section === "activity" && <Activity selected={selected} onSelect={setSelected} />}
@@ -135,6 +142,9 @@ function Setup({ capabilities }: { capabilities: Capabilities | null }) {
         {message && <p className="muted">{message}</p>}
       </div>
       <Weights />
+      <SystemCheck />
+      <Profile />
+      <Storage />
     </section>
   );
 }
@@ -251,6 +261,13 @@ function Scores({ evaluation }: { evaluation: NonNullable<NonNullable<JobDetail[
 function UploadStatus({ job, onRetry }: { job: JobDetail; onRetry: () => void }) {
   const [message, setMessage] = useState("");
   const synced = job.tracking_state === "synced";
+  const [autoOpen, setAutoOpen] = useState(() => { try { return localStorage.getItem("foxtrot.autoOpenMlflow") === "1"; } catch { return false; } });
+  const wasPending = useRef(!synced);
+  // Same-tab redirect only when the upload completes while this page watches it (no popup needed).
+  useEffect(() => {
+    if (synced && wasPending.current && autoOpen && job.tracking_run?.run_url) window.location.assign(job.tracking_run.run_url);
+    wasPending.current = !synced;
+  }, [synced, autoOpen, job.tracking_run?.run_url]);
 
   // Ask the backend to upload this job now, then refresh the job.
   async function retry() {
@@ -264,6 +281,7 @@ function UploadStatus({ job, onRetry }: { job: JobDetail; onRetry: () => void })
   return (
     <>
       <h3>MLflow</h3>
+      {!synced && job.execution_state === "finished" && <p><strong>Training finished — upload pending.</strong></p>}
       <p>
         Upload: <span className={synced ? "state finished" : "muted"}>{job.tracking_state}</span>
         {job.tracking_error && <span className="error"> · {job.tracking_error.message}</span>}
@@ -271,6 +289,9 @@ function UploadStatus({ job, onRetry }: { job: JobDetail; onRetry: () => void })
       {synced && job.tracking_run?.run_url && (
         <p><a className="button" href={job.tracking_run.run_url} target="_blank" rel="noreferrer">View in MLflow</a></p>
       )}
+      <label className="check small"><input type="checkbox" checked={autoOpen} onChange={(e) => {
+        setAutoOpen(e.target.checked); try { localStorage.setItem("foxtrot.autoOpenMlflow", e.target.checked ? "1" : ""); } catch { /* storage unavailable */ }
+      }} />Open the MLflow run automatically when its upload finishes</label>
       {!synced && <button onClick={retry}>Retry upload</button>}
       {message && !synced && <p className="muted">{message}</p>}
     </>

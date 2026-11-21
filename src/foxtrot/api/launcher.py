@@ -80,6 +80,7 @@ def main(argv=None) -> int:
                              "'pretrained'/'scratch' force one mode for every job")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser tab")
     parser.add_argument("--no-worker", action="store_true", help="Serve the website/API only")
+    parser.add_argument("--check", action="store_true", help="Check the installation and workspace, then exit")
     parser.add_argument("--runtime-directory", type=Path, help=argparse.SUPPRESS)  # isolated tests only
     arguments = parser.parse_args(argv)
     if not 1024 <= arguments.port <= 65535:
@@ -87,6 +88,13 @@ def main(argv=None) -> int:
 
     # Initialize storage before the API and worker can race to create it.
     initialize_database(arguments.workspace, arguments.source_checkout)
+    if arguments.check:  # V8: setup check without starting anything
+        from .app import STATIC_DIRECTORY
+        from .system import system_check
+        report = system_check(arguments.workspace, arguments.source_checkout, STATIC_DIRECTORY)
+        for check in report["checks"]:
+            print(f"{'OK ' if check['ok'] else 'NO '} {check['name']}: {check['detail']}")
+        return 0 if report["ok"] else 1
     app = create_app(arguments.workspace, arguments.source_checkout, port=arguments.port,
                      session_token=new_session_token(), pipeline_adapter=arguments.pipeline_adapter)
     redactor = RedactingFilter(app.state.settings)

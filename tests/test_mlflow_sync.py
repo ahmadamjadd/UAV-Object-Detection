@@ -103,13 +103,15 @@ class MlflowSyncTests(unittest.TestCase):
         self.assertEqual((code, results), (0, []))
         self.assertEqual(self.read_back()["count"], 1)
 
-    # A job whose destination is not configured stays pending, with the reason shown.
+    # A job whose destination is not configured stays queued, with the reason shown on the job (V7).
     def test_unconfigured_destination_stays_pending(self):
+        from foxtrot.persistence.jobs import get_job_record
         job = self.finished_job(destination="dagshub")
         code, results, _ = self.sync("run")
         self.assertEqual(code, 0)
-        self.assertEqual(results[0]["tracking_state"], "pending")
+        self.assertEqual(results[0]["tracking_state"], "retrying")
         self.assertIn("not configured", results[0]["skipped"])
+        self.assertEqual(get_job_record(self.workspace, self.checkout, job).tracking_error.code, "tracking_not_configured")
         self.assertEqual(jobs_with_pending_tracking(self.workspace, self.checkout), [job])
 
     # "check" succeeds for a reachable destination and explains failures without leaking tokens.

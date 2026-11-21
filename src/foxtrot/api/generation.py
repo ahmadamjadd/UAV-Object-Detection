@@ -47,6 +47,10 @@ class GenerationRuns:
             raise KeyError("Unknown generation run")
         return folder
 
+    # The ID of the run in progress, if any (cleanup never touches it).
+    def active_run(self) -> str | None:
+        return self._active[0] if self._running() else None
+
     # True while a run's process is still alive.
     def _running(self) -> bool:
         return self._active is not None and self._active[1].poll() is None

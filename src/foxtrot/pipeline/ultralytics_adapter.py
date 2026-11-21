@@ -8,6 +8,7 @@ nothing is sent anywhere during training.
 
 import math
 import os
+import shutil
 from pathlib import Path
 import sys
 import traceback
@@ -19,7 +20,9 @@ from foxtrot.config.models import get_model
 from foxtrot.config.training import ultralytics_arguments
 from foxtrot.persistence.files import fingerprint, job_file
 from foxtrot.persistence.models import WeightsError, verify_weights
-from foxtrot.persistence.start_checkpoints import StartCheckpointError, locate_start_checkpoint
+from foxtrot.persistence.start_checkpoints import (
+    StartCheckpointError, locate_resume_checkpoint, locate_start_checkpoint,
+)
 
 from .contracts import (
     EvaluationInput, PipelineCancelled, PipelineFailure, ProgressReporter, TrainingInput, TrainingResult,
@@ -105,6 +108,17 @@ class UltralyticsTrainer:
             except StartCheckpointError as error:
                 raise PipelineFailure("start_checkpoint_unavailable", str(error)) from error
             return str(path), digest
+        if mode == "resume":  # V7: copy the interrupted job's last.pt into this job, verified by hash
+            try:
+                source, digest = locate_resume_checkpoint(workspace, spec.checkpoint_job_id)
+            except StartCheckpointError as error:
+                raise PipelineFailure("resume_unavailable", str(error)) from error
+            target = Path(request.output_directory) / "resume" / "last.pt"
+            target.parent.mkdir()
+            shutil.copyfile(source, target)
+            if fingerprint(target)[0] != digest:
+                raise PipelineFailure("resume_unavailable", "The interrupted job's last.pt changed while copying")
+            return str(target), digest
         models = workspace / "models"
         try:
             digest = verify_weights(models, model.model_id)
@@ -119,8 +133,10 @@ class UltralyticsTrainer:
         output = Path(request.output_directory)
         YOLO = _load_ultralytics(output)
         settings = request.resolved.training
-        model = YOLO(source)
         mode = self._mode(request)
+        if mode == "resume":
+            _check_resumable(source)
+        model = YOLO(source)
         reporter.log({"action": "model_loaded", "initialization": mode,
                       "source": Path(source).name, "weights_sha256": weights_sha256})
         state = {"epochs_done": 0, "epoch_pending": False, "metrics": {}}
@@ -140,7 +156,7 @@ class UltralyticsTrainer:
             state["metrics"] = _epoch_metrics(trainer)
             if state["epoch_pending"]:
                 state["epoch_pending"] = False
-                state["epochs_done"] += 1
+                state["epochs_done"] = trainer.epoch + 1  # the real epoch number, also after a resume
                 reporter.progress({"epoch": state["epochs_done"], "epochs": trainer.epochs, **state["metrics"]})
 
         model.add_callback("on_train_batch_end", on_batch_end)
@@ -154,6 +170,8 @@ class UltralyticsTrainer:
             arguments.update(data=request.data_yaml, project=str(output), name="train", exist_ok=False,
                              plots=False, verbose=False, val=True, save=True, resume=False,
                              pretrained=mode != "scratch")
+            if mode == "resume":  # continue the saved optimizer/epoch state; write only into this job
+                arguments.update(resume=source, save_dir=str(output / "train"))
             reporter.log({"action": "training_arguments", "arguments": {
                 key: value for key, value in arguments.items() if key not in ("data", "project")}})
             model.train(**arguments)
@@ -173,6 +191,20 @@ class UltralyticsTrainer:
             epochs_completed=state["epochs_done"], metrics=state["metrics"], fixture=False,
             start_weights_sha256=weights_sha256, initialization=mode,
         )
+
+
+# V7: refuse a last.pt this runtime cannot continue (other Ultralytics version, or already complete).
+def _check_resumable(path: str) -> None:
+    import torch
+    import ultralytics
+
+    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    version = checkpoint.get("version")
+    if version != ultralytics.__version__:
+        raise PipelineFailure("resume_incompatible", f"last.pt was written by Ultralytics {version}, this is "
+                              f"{ultralytics.__version__}; start a new experiment instead")
+    if checkpoint.get("epoch", -1) < 0:
+        raise PipelineFailure("resume_incompatible", "That training already completed; nothing to resume")
 
 
 # Scores the exact checkpoint chosen by training on the dataset's validation images.

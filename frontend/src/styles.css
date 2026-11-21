@@ -108,3 +108,7 @@ table.compact tr { cursor: default; }
 .badge.role-test { background: #fde8e6; color: var(--bad); }
 .param { border: 1px dashed var(--line); border-radius: 6px; padding: 8px; display: grid; gap: 6px; }
 select[multiple] { min-height: 6em; }
+li.recovery { border-bottom: 1px solid var(--line); padding: 8px 0; display: grid; gap: 4px; }
+nav { flex-wrap: wrap; }
+ul.plain code { overflow-wrap: anywhere; }
+ul.plain.scroll { max-height: 360px; overflow: auto; }

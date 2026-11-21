@@ -87,7 +87,7 @@ def _flatten(prefix: str, value, into: dict[str, str]) -> None:
 def build_tracking_plan(
     *, result: JobResult, resolved: JobSpec, resolved_sha256: str, adapter: str, fixture: bool,
     dataset: DatasetInput, pipeline: PipelineResult | None, artifact_names: set[str],
-    epoch_progress=(), dataset_provenance: dict | None = None, plot_artifacts=(),
+    epoch_progress=(), dataset_provenance: dict | None = None, plot_artifacts=(), member: str | None = None,
 ) -> list[TrackingOperation]:
     job_id = result.job_id
     params: dict[str, str] = {}
@@ -111,6 +111,7 @@ def build_tracking_plan(
         TrackingOperation(operation="create_run", payload={
             "run_name": f"foxtrot-{job_id[:8]}",
             "tags": {JOB_TAG: job_id, "foxtrot.adapter": adapter, "foxtrot.kind": resolved.kind,
+                     **({"foxtrot.member": member} if member else {}),
                      **({"foxtrot.study_id": resolved.study.study_id,
                          "foxtrot.trial_number": str(resolved.study.trial_number)} if resolved.study else {}),
                      "foxtrot.fixture": str(fixture).lower(), "foxtrot.outcome": result.outcome},

@@ -22,7 +22,7 @@ from foxtrot.persistence.tracking import jobs_with_pending_tracking
 from foxtrot.persistence.workspace import initialize_workspace
 
 from .mlflow_client import MlflowTrackingClient, configure_environment
-from .uploader import sync_job_tracking
+from .uploader import record_destination_failure, sync_job_tracking
 
 
 BUSY = 3  # exit code: another upload is already running for this workspace
@@ -80,9 +80,12 @@ def sync_pending(workspace: Path, checkout: Path, *, job_id: str | None = None) 
     for destination_id, jobs in by_destination.items():
         try:
             client = client_for(destination_id)
-        except Exception as error:  # not configured or unreachable: uploads stay pending
+        except Exception as error:  # not configured or unreachable: uploads stay queued, with the reason shown
             reason = _safe_message(error, store)
-            results += [{"job_id": job, "tracking_state": "pending", "skipped": reason} for job in jobs]
+            for job in jobs:
+                record = record_destination_failure(workspace, checkout, job, error)
+                results.append({"job_id": job, "tracking_state": record.tracking_state, "skipped": reason,
+                                "error": record.tracking_error.message if record.tracking_error else None})
             continue
         for job in jobs:
             study = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, job).resolved_json).study

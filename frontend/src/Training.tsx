@@ -11,8 +11,9 @@ type Start = "pretrained" | "scratch" | "checkpoint";
 
 // New training: dataset, model, how it starts, and every training setting, grouped as the backend says.
 // The form is built from the backend's schema; "Edit as JSON" sends the same request through the same checks.
-export function TrainingForm({ capabilities, initialDataset, onSubmitted }: {
-  capabilities: Capabilities | null; initialDataset: string | null; onSubmitted: (id: string) => void;
+export function TrainingForm({ capabilities, initialDataset, initialRequest, onSubmitted }: {
+  capabilities: Capabilities | null; initialDataset: string | null; initialRequest?: Record<string, unknown> | null;
+  onSubmitted: (id: string) => void;
 }) {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [properties, setProperties] = useState<Record<string, Property>>({});
@@ -25,7 +26,8 @@ export function TrainingForm({ capabilities, initialDataset, onSubmitted }: {
   const [checkpointJob, setCheckpointJob] = useState("");
   const [destination, setDestination] = useState("");
   const [changed, setChanged] = useState<Values>({});
-  const [json, setJson] = useState<string | null>(null);
+  // V7 "New experiment": start in the JSON editor with an earlier job's request, ready to change.
+  const [json, setJson] = useState<string | null>(initialRequest ? JSON.stringify(initialRequest, null, 2) : null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const submissionKey = useRef<string | null>(null);

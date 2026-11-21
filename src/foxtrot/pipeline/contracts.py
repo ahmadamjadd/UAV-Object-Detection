@@ -131,7 +131,7 @@ class TrainingResult(Contract):
     metrics: dict[str, float] = Field(default_factory=dict)
     fixture: bool = False
     # V3: how the model started and the exact starting weights (None: random weights or fixture).
-    initialization: Literal["pretrained", "scratch", "checkpoint"] | None = None
+    initialization: Literal["pretrained", "scratch", "checkpoint", "resume"] | None = None
     start_weights_sha256: str | None = Field(default=None, pattern=SHA256)
 
     @field_validator("metrics")

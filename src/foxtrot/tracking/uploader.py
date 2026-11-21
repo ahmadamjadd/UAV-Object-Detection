@@ -23,6 +23,45 @@ from foxtrot.persistence.workspace import initialize_workspace
 from .contracts import TrackingClient
 
 
+# V7: a safe, specific reason for a failed upload (exception text may contain URLs or tokens,
+# so only its type and a few status words are inspected; nothing from it is shown).
+def classify_tracking_error(error: Exception) -> ErrorDetails:
+    if isinstance(error, LookupError):  # raised by sync for a destination missing from Setup
+        return ErrorDetails(code="tracking_not_configured", message="This job's tracking destination is not "
+                            "configured on the Setup page. Local results are kept.")
+    text = f"{type(error).__name__} {error}".lower()
+    status = getattr(getattr(error, "response", None), "status_code", None) or getattr(error, "status_code", None)
+    if status in (401, 403) or any(word in text for word in ("unauthorized", "forbidden", "permission denied",
+                                                              "invalid credentials", "authentication")):
+        return ErrorDetails(code="tracking_credentials", message="Upload refused: check the username and token "
+                            "for this destination on the Setup page. Local results are kept.")
+    if status == 429 or any(word in text for word in ("quota", "rate limit", "too many requests",
+                                                       "storage limit", "insufficient storage", "507")):
+        return ErrorDetails(code="tracking_quota", message="Upload refused by the tracking service's limits "
+                            "(quota or rate). Local results are kept; it is retried automatically.")
+    if isinstance(error, (ConnectionError, TimeoutError, OSError)) or any(word in text for word in (
+            "connection", "timed out", "timeout", "unreachable", "name resolution", "max retries")):
+        return ErrorDetails(code="tracking_unreachable", message="The tracking service could not be reached. "
+                            "Local results are kept; upload resumes automatically when it is back.")
+    return ErrorDetails(code="tracking_upload_failed", message=f"Tracking upload failed ({type(error).__name__}); "
+                        "local results are kept and can be retried.")
+
+
+# V7: the destination could not even be opened (unreachable, refused, not configured):
+# show the reason on the waiting job, keeping it queued for the next automatic try.
+def record_destination_failure(workspace_root, source_checkout, job_id: str, error: Exception) -> JobRecord:
+    root = initialize_workspace(workspace_root, source_checkout)
+    state = TrackingState(get_job_record(root, source_checkout, job_id).tracking_state)
+    if state == TrackingState.FAILED:
+        return transition_tracking(root, source_checkout, job_id, TrackingState.RETRYING,
+                                   error=classify_tracking_error(error))
+    if state in (TrackingState.PENDING, TrackingState.RETRYING):
+        transition_tracking(root, source_checkout, job_id, TrackingState.SYNCING)
+        return transition_tracking(root, source_checkout, job_id, TrackingState.RETRYING,
+                                   error=classify_tracking_error(error))
+    return get_job_record(root, source_checkout, job_id)
+
+
 def sync_job_tracking(
     workspace_root: str | Path, source_checkout: str | Path, job_id: str, client: TrackingClient,
     *, extra_run_tags=None,
@@ -70,9 +109,6 @@ def sync_job_tracking(
                 client.set_terminated(association.run_id, payload["status"])
             acknowledge_tracking(root, source_checkout, job_id, entry.position)
     except Exception as error:
-        # Exception text can contain URLs or tokens; save only its class name.
-        return transition_tracking(root, source_checkout, job_id, TrackingState.RETRYING, error=ErrorDetails(
-            code="tracking_upload_failed",
-            message=f"Tracking upload failed ({type(error).__name__}); local results are kept and can be retried.",
-        ))
+        return transition_tracking(root, source_checkout, job_id, TrackingState.RETRYING,
+                                   error=classify_tracking_error(error))
     return transition_tracking(root, source_checkout, job_id, TrackingState.SYNCED)
