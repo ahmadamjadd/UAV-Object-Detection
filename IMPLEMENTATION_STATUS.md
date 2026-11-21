@@ -1,6 +1,6 @@
 # Team Foxtrot implementation handoff
 
-Updated: **20 November 2026, Asia/Karachi** (all slices V1–V8 implemented; V7/V8 not yet committed; V4–V6 committed as `941451d` and pushed).
+Updated: **20 November 2026, Asia/Karachi** (all slices V1–V8 implemented, committed and pushed: V7/V8 `24b2300`, V4–V6 `941451d`).
 
 ## Objective and scope
 
@@ -20,7 +20,7 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Current milestone and approval state
 
-**V7 and V8 complete (20 November 2026):** recovery screen, resume from last.pt, classified upload errors, crash-boundary reconciliation; setup check, member attribution, safe cleanup, release record, version 0.9.0, upgrade and team-server checks; 292/292 tests, 1,216 protected files unchanged. Not committed. Release candidate: two-computer pilot pending.
+**V7 and V8 complete (20 November 2026):** recovery screen, resume from last.pt, classified upload errors, crash-boundary reconciliation; setup check, member attribution, safe cleanup, release record, version 0.9.0, upgrade and team-server checks; 292/292 tests, 1,216 protected files unchanged. Committed as `24b2300` and pushed. Release candidate: two-computer pilot pending.
 
 **V5 and V6 complete (20 November 2026):** tuning studies (grid/random/TPE, conditional and log spaces, equal-budget and combined model comparison, recipe tuning with frozen validation, pruning, repeats, stop/resume) with MLflow parent/child runs; Optuna 5.0.0 added to the lock; 285/285 tests, 1,216 protected files unchanged; live real-YOLO studies verified. Not committed (together with V4). **V7–V8 not implemented; V7 awaits approval.**
 
@@ -330,7 +330,7 @@ Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundati
 
 ## Exact next proposed action
 
-All slices are implemented. V7/V8 are **not committed**; ask the user before committing/pushing (V4–V6 are `941451d`, pushed). Remaining work is outside code: a two-member pilot on two computers, other OS/GPU verification, real labeled flight images, and DagsHub checks with the V2–V8 features (see docs/release.md "Not yet verified"). Real labeled flight data is still needed for meaningful V4 results. The user's own Foxtrot instance on `~/foxtrot-workspace-v1` was running pre-V3 code during these checks and must be restarted to use V3–V6.
+All slices are implemented, committed and pushed on `foundation-h4-h7` (V7/V8 `24b2300`); `main` is still unmerged. On 21 November 2026 an editor action had deleted the V4 section of persistence/dataset_import.py; it was restored from `941451d`. Remaining work is outside code: a two-member pilot on two computers, other OS/GPU verification, real labeled flight images, and DagsHub checks with the V2–V8 features (see docs/release.md "Not yet verified"). Real labeled flight data is still needed for meaningful V4 results. The user's own Foxtrot instance on `~/foxtrot-workspace-v1` was running pre-V3 code during these checks and must be restarted to use V3–V6.
 
 Previous next action (done): start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
 
