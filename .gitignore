@@ -14,3 +14,5 @@ __pycache__/
 .env
 /data.yaml
 /src/data_generation/res/letters[0-9]*/
+/weights/
+/*.pt

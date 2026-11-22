@@ -9,6 +9,7 @@ from .jobs import _required_row
 from .workspace import initialize_workspace
 
 
+# A stored file of a job, with its exact size and hash.
 @dataclass(frozen=True)
 class ArtifactReference:
     job_id: str

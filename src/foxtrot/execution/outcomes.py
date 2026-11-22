@@ -97,6 +97,8 @@ def record_pipeline_outcome(
     provenance = load_generation_provenance(request.dataset) or load_dvc_provenance(request.dataset)
     from foxtrot.persistence.profile import read_profile
     member = read_profile(workspace, checkout)["member"]  # V8: who trained it, for shared MLflow
+    from foxtrot.persistence.labels import read_labels
+    labels = read_labels(workspace, checkout)  # the member's names for this run and its dataset
     if provenance is not None:
         write_new_text(claim.directory / "dataset-provenance.json", json.dumps(provenance, indent=2))
         sync_directory(claim.directory)
@@ -109,6 +111,7 @@ def record_pipeline_outcome(
         artifact_names=names | {"job-result", "summary"},
         epoch_progress=_epoch_progress(workspace, checkout, claim.job_id),
         dataset_provenance=provenance, plot_artifacts=sorted(plots), member=member,
+        run_name=labels["jobs"].get(claim.job_id), dataset_name=labels["datasets"].get(request.dataset.metadata.dataset_id),
     )
     enqueue_tracking(workspace, checkout, claim.job_id, plan)
     return result

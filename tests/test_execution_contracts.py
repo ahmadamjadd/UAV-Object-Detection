@@ -24,7 +24,9 @@ from foxtrot.persistence.lifecycle import transition_execution
 from foxtrot.persistence.workspace import initialize_workspace
 
 
+# Messages and process ownership between supervisor and child.
 class ExecutionContractTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h5-contract-")
         self.addCleanup(temporary.cleanup)
@@ -34,6 +36,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.workspace = self.root / "workspace"
         self.request = {"dataset_id": "fixture", "tracking_destination_id": "local"}
 
+    # Record one job and return its ID.
     def submit(self):
         return create_recorded_job(self.workspace, self.checkout, self.request, "one").name
 
@@ -170,6 +173,7 @@ class ExecutionContractTests(unittest.TestCase):
         claim = claim_next_job(self.workspace, self.checkout)
         supervisor = Supervisor(self.workspace, self.checkout, FixtureSettings(), threading.Event(), SupervisorLimits())
 
+        # Stop the process, then pretend the result is uncertain.
         def uncertain(identity, **options):
             # Stop the real test process, then simulate an uncertain observation.
             self.assertTrue(stop_session(identity, **options))

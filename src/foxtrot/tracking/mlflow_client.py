@@ -49,6 +49,7 @@ class MlflowTrackingClient:
     def __init__(self, tracking_uri: str, experiment_name: str, browser_url: str | None = None):
         from mlflow.tracking import MlflowClient
         self.client = MlflowClient(tracking_uri=tracking_uri)
+        self.experiment_name = experiment_name
         experiment = self.client.get_experiment_by_name(experiment_name)
         if experiment is None:
             self.experiment_id = self.client.create_experiment(

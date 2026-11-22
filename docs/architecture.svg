@@ -1,0 +1,202 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 930" width="1240" height="930" font-family="Inter, 'Segoe UI', Ubuntu, Helvetica, Arial, sans-serif">
+  <!-- Foxtrot system architecture: browser, local processes, workspace, external services. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowOrange" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ea580c"/>
+    </marker>
+    <style>
+      .title { font-size: 15px; font-weight: 700; fill: #0f172a; }
+      .group { font-size: 13px; font-weight: 700; fill: #9a3412; letter-spacing: .3px; }
+      .box { font-size: 13px; font-weight: 600; fill: #0f172a; }
+      .small { font-size: 11.5px; fill: #475569; }
+      .edge { font-size: 11.5px; fill: #334155; font-weight: 600; }
+      .code { font-family: ui-monospace, 'DejaVu Sans Mono', monospace; font-size: 11px; fill: #9a3412; }
+    </style>
+  </defs>
+
+  <rect width="1240" height="930" fill="#ffffff"/>
+  <text x="30" y="34" font-size="20" font-weight="800" fill="#0f172a">Team Foxtrot — system architecture</text>
+  <text x="30" y="56" class="small">Everything left of the dashed line runs on each member's own computer; results are shared through MLflow and DVC.</text>
+
+  <!-- Browser -->
+  <rect x="300" y="76" width="560" height="92" rx="14" fill="#0f172a"/>
+  <text x="580" y="104" text-anchor="middle" font-size="15" font-weight="700" fill="#ffffff">Browser — Foxtrot interface (React)</text>
+  <text x="580" y="126" text-anchor="middle" font-size="12" fill="#fdba74">Home · Datasets · Train · Runs · Evaluate · Settings</text>
+  <text x="580" y="148" text-anchor="middle" font-size="11" fill="#cbd5e1">built from frontend/ into src/foxtrot/api/static/</text>
+
+  <!-- Member's computer group -->
+  <rect x="20" y="196" width="900" height="716" rx="18" fill="#fffbf7" stroke="#fdba74" stroke-width="1.5"/>
+  <text x="40" y="222" class="group">MEMBER'S COMPUTER — started by  foxtrot --workspace &lt;folder&gt;</text>
+
+  <!-- browser -> website -->
+  <line x1="580" y1="168" x2="580" y2="244" stroke="#ea580c" stroke-width="2" marker-end="url(#arrowOrange)" marker-start="url(#arrowOrange)"/>
+  <text x="592" y="190" class="edge">HTTP on 127.0.0.1:8765</text>
+  <text x="592" y="205" class="small">session token, this computer only</text>
+
+  <!-- Website process -->
+  <rect x="40" y="246" width="860" height="160" rx="14" fill="#ffffff" stroke="#f97316" stroke-width="2"/>
+  <text x="60" y="272" class="title">Website process</text>
+  <text x="190" y="272" class="code">src/foxtrot/api  (FastAPI)</text>
+  <g>
+    <rect x="60" y="288" width="196" height="100" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+    <text x="158" y="312" text-anchor="middle" class="box">API + security</text>
+    <text x="158" y="332" text-anchor="middle" class="small">checks every request,</text>
+    <text x="158" y="348" text-anchor="middle" class="small">queues jobs, serves the</text>
+    <text x="158" y="364" text-anchor="middle" class="small">page and live progress</text>
+
+    <rect x="268" y="288" width="196" height="100" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+    <text x="366" y="312" text-anchor="middle" class="box">Study coordinator</text>
+    <text x="366" y="332" text-anchor="middle" class="small">Optuna: picks each trial's</text>
+    <text x="366" y="348" text-anchor="middle" class="small">settings, queues it as a</text>
+    <text x="366" y="364" text-anchor="middle" class="small">normal job, prunes</text>
+
+    <rect x="476" y="288" width="196" height="100" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+    <text x="574" y="312" text-anchor="middle" class="box">Upload scheduler</text>
+    <text x="574" y="332" text-anchor="middle" class="small">finds unsent results,</text>
+    <text x="574" y="348" text-anchor="middle" class="small">starts the sync process,</text>
+    <text x="574" y="364" text-anchor="middle" class="small">waits longer after failures</text>
+
+    <rect x="684" y="288" width="196" height="100" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+    <text x="782" y="312" text-anchor="middle" class="box">Dataset runs</text>
+    <text x="782" y="332" text-anchor="middle" class="small">starts generation, DVC</text>
+    <text x="782" y="348" text-anchor="middle" class="small">downloads and prediction</text>
+    <text x="782" y="364" text-anchor="middle" class="small">previews in the background</text>
+  </g>
+
+  <!-- Worker process -->
+  <rect x="40" y="446" width="420" height="230" rx="14" fill="#ffffff" stroke="#f97316" stroke-width="2"/>
+  <text x="60" y="472" class="title">Worker process</text>
+  <text x="182" y="472" class="code">src/foxtrot/execution</text>
+  <text x="60" y="492" class="small">one job at a time; safe cancel and crash recovery</text>
+
+  <rect x="60" y="506" width="120" height="58" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="120" y="530" text-anchor="middle" class="box">Worker</text>
+  <text x="120" y="548" text-anchor="middle" class="small">claims next job</text>
+
+  <rect x="210" y="506" width="230" height="58" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="325" y="530" text-anchor="middle" class="box">Supervisor</text>
+  <text x="325" y="548" text-anchor="middle" class="small">owns the child, records events</text>
+  <line x1="180" y1="535" x2="208" y2="535" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <rect x="60" y="590" width="380" height="70" rx="10" fill="#0f172a"/>
+  <text x="250" y="614" text-anchor="middle" font-size="13" font-weight="700" fill="#ffffff">Job process — YOLO (Ultralytics)</text>
+  <text x="250" y="632" text-anchor="middle" font-size="11.5" fill="#fdba74">train → pick best.pt → evaluate on validation</text>
+  <text x="250" y="649" text-anchor="middle" font-size="11" fill="#cbd5e1">CPU or NVIDIA GPU · src/foxtrot/pipeline</text>
+  <line x1="325" y1="564" x2="325" y2="588" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="333" y="582" class="small">progress / cancel</text>
+
+  <!-- Helper processes -->
+  <rect x="480" y="446" width="420" height="230" rx="14" fill="#ffffff" stroke="#f97316" stroke-width="2"/>
+  <text x="500" y="472" class="title">Short-lived helper processes</text>
+  <text x="500" y="492" class="small">started on demand; heavy libraries never load into the website</text>
+
+  <rect x="500" y="506" width="380" height="36" rx="9" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="514" y="529" class="box">MLflow sync</text>
+  <text x="610" y="529" class="small">uploads params, metrics, files in order</text>
+
+  <rect x="500" y="550" width="380" height="36" rx="9" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="514" y="573" class="box">Generator</text>
+  <text x="596" y="573" class="small">original src/data_generation, unchanged</text>
+
+  <rect x="500" y="594" width="380" height="36" rx="9" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="514" y="617" class="box">DVC import</text>
+  <text x="604" y="617" class="small">dataset at an exact Git revision</text>
+
+  <rect x="500" y="638" width="380" height="30" rx="9" fill="#fff7ed" stroke="#fed7aa"/>
+  <text x="514" y="658" class="box">GPU check</text>
+  <text x="596" y="658" class="small">asks PyTorch which GPUs work</text>
+
+  <!-- website -> helpers / coordinator & API -> workspace -->
+  <line x1="690" y1="406" x2="690" y2="444" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <text x="698" y="430" class="edge">starts</text>
+
+  <!-- Workspace -->
+  <rect x="40" y="716" width="860" height="178" rx="14" fill="#f8fafc" stroke="#94a3b8" stroke-width="2"/>
+  <text x="60" y="742" class="title">Workspace folder</text>
+  <text x="196" y="742" class="code">e.g. ~/foxtrot-workspace-v1 · src/foxtrot/persistence</text>
+  <text x="60" y="762" class="small">the single source of truth: processes talk to each other through it, so nothing is lost if one stops</text>
+
+  <g>
+    <!-- database cylinder -->
+    <path d="M60,786 a68,10 0 0,0 136,0 v72 a68,10 0 0,1 -136,0 z" fill="#e2e8f0" stroke="#64748b"/>
+    <ellipse cx="128" cy="786" rx="68" ry="10" fill="#f1f5f9" stroke="#64748b"/>
+    <text x="128" y="818" text-anchor="middle" class="box">SQLite database</text>
+    <text x="128" y="836" text-anchor="middle" class="small">jobs, states, events,</text>
+    <text x="128" y="852" text-anchor="middle" class="small">upload queue</text>
+
+    <rect x="212" y="778" width="128" height="94" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="276" y="804" text-anchor="middle" class="box">Jobs</text>
+    <text x="276" y="824" text-anchor="middle" class="small">settings, logs,</text>
+    <text x="276" y="840" text-anchor="middle" class="small">checkpoints,</text>
+    <text x="276" y="856" text-anchor="middle" class="small">results</text>
+
+    <rect x="352" y="778" width="128" height="94" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="416" y="804" text-anchor="middle" class="box">Datasets</text>
+    <text x="416" y="824" text-anchor="middle" class="small">checked copies</text>
+    <text x="416" y="840" text-anchor="middle" class="small">with fingerprints</text>
+    <text x="416" y="856" text-anchor="middle" class="small">and roles</text>
+
+    <rect x="492" y="778" width="128" height="94" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="556" y="804" text-anchor="middle" class="box">Models</text>
+    <text x="556" y="824" text-anchor="middle" class="small">pretrained</text>
+    <text x="556" y="840" text-anchor="middle" class="small">weights, hash-</text>
+    <text x="556" y="856" text-anchor="middle" class="small">checked</text>
+
+    <rect x="632" y="778" width="118" height="94" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="691" y="804" text-anchor="middle" class="box">Studies</text>
+    <text x="691" y="824" text-anchor="middle" class="small">definitions,</text>
+    <text x="691" y="840" text-anchor="middle" class="small">trials, Optuna</text>
+    <text x="691" y="856" text-anchor="middle" class="small">storage</text>
+
+    <rect x="762" y="778" width="118" height="94" rx="9" fill="#ffffff" stroke="#cbd5e1"/>
+    <text x="821" y="804" text-anchor="middle" class="box">Settings</text>
+    <text x="821" y="824" text-anchor="middle" class="small">destinations,</text>
+    <text x="821" y="840" text-anchor="middle" class="small">private secrets,</text>
+    <text x="821" y="856" text-anchor="middle" class="small">names, profile</text>
+  </g>
+
+  <!-- process <-> workspace arrows -->
+  <path d="M40,330 H30 V805 H58" fill="none" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="46" y="432" class="edge">left line: the API queues jobs and reads progress and results through the workspace</text>
+  <line x1="250" y1="676" x2="250" y2="714" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="258" y="700" class="edge">claim job · write events, result, checkpoint</text>
+  <line x1="690" y1="676" x2="690" y2="714" stroke="#475569" stroke-width="1.6" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="698" y="700" class="edge">read / write</text>
+
+  <!-- boundary -->
+  <line x1="940" y1="76" x2="940" y2="912" stroke="#94a3b8" stroke-width="1.5" stroke-dasharray="6 6"/>
+  <text x="960" y="222" class="group" fill="#3730a3">SHARED / INTERNET</text>
+
+  <!-- External services -->
+  <rect x="960" y="400" width="260" height="120" rx="14" fill="#eef2ff" stroke="#818cf8" stroke-width="2"/>
+  <text x="1090" y="428" text-anchor="middle" class="title">MLflow tracking</text>
+  <text x="1090" y="448" text-anchor="middle" class="small">DagsHub or a team server</text>
+  <text x="1090" y="468" text-anchor="middle" class="small">one experiment per destination;</text>
+  <text x="1090" y="484" text-anchor="middle" class="small">runs with params, metrics, plots,</text>
+  <text x="1090" y="500" text-anchor="middle" class="small">checkpoints; studies as parents</text>
+
+  <rect x="960" y="560" width="260" height="96" rx="14" fill="#eef2ff" stroke="#818cf8" stroke-width="2"/>
+  <text x="1090" y="588" text-anchor="middle" class="title">Git + DVC remote</text>
+  <text x="1090" y="608" text-anchor="middle" class="small">versioned datasets</text>
+  <text x="1090" y="624" text-anchor="middle" class="small">(this repository, DagsHub storage)</text>
+
+  <rect x="960" y="760" width="260" height="96" rx="14" fill="#eef2ff" stroke="#818cf8" stroke-width="2"/>
+  <text x="1090" y="788" text-anchor="middle" class="title">Ultralytics releases</text>
+  <text x="1090" y="808" text-anchor="middle" class="small">official pretrained YOLO weights</text>
+  <text x="1090" y="824" text-anchor="middle" class="small">(downloaded once, then offline)</text>
+
+  <!-- helpers -> externals -->
+  <path d="M880,524 H920 V470 H958" fill="none" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="884" y="516" class="edge" fill="#3730a3">upload</text>
+  <path d="M880,612 H958" fill="none" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="886" y="604" class="edge" fill="#3730a3">pull</text>
+  <path d="M880,825 H958" fill="none" stroke="#4f46e5" stroke-width="1.8" marker-end="url(#arrow)" marker-start="url(#arrow)"/>
+  <text x="886" y="817" class="edge" fill="#3730a3">weights</text>
+
+  <!-- browser -> MLflow link -->
+  <path d="M860,122 H1090 V398" fill="none" stroke="#4f46e5" stroke-width="1.6" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
+  <text x="1000" y="114" class="edge" fill="#3730a3">“View in MLflow” link</text>
+</svg>

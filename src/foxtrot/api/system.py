@@ -71,5 +71,8 @@ def system_check(workspace: Path, checkout: Path, static_directory: Path | None 
         checks.append(_check("Browser interface", (static_directory / "index.html").is_file(),
                              "built into the package" if (static_directory / "index.html").is_file()
                              else "missing: run npm run build in frontend/"))
+    from .gpu import detect_gpus
+    gpus = detect_gpus()
+    checks.append(_check("GPU", True, gpus["message"]))  # informational: CPU training always works
     required = {"Python", "Libraries", "Workspace database"}
     return {"ok": all(c["ok"] for c in checks if c["name"] in required), "checks": checks}

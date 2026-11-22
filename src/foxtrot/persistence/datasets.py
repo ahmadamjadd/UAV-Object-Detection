@@ -27,6 +27,7 @@ class DatasetUnavailable(ValueError):
     """The requested dataset is missing, unsafe, invalid, or changed."""
 
 
+# The folder of one dataset, refusing anything that is not a valid ID.
 def _dataset_directory(root: Path, dataset_id: str) -> Path:
     # Same pattern as DatasetMetadata.dataset_id, so an ID can never be a path.
     if not isinstance(dataset_id, str) or not DATASET_ID.fullmatch(dataset_id):

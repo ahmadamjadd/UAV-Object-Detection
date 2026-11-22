@@ -138,7 +138,9 @@ class UploadErrorTests(unittest.TestCase):
     def test_classification(self):
         from foxtrot.tracking.uploader import classify_tracking_error
 
+        # Stand-in for an HTTP error from MLflow.
         class HttpError(Exception):
+            # Keep the status code like a real response.
             def __init__(self, status, text):
                 super().__init__(text)
                 self.response = type("Response", (), {"status_code": status})()
@@ -204,7 +206,11 @@ class RecoveryAndReleaseTests(RecoveryCase):
         self.assertFalse(stopped[failed]["resumable"])
         self.assertIn("last.pt", stopped[failed]["resume_reason"])
         self.assertEqual(stopped[failed]["request"]["dataset_id"], "squares")
-        self.assertEqual(len(report["uploads"]), 2)  # nothing was uploaded in this test
+        self.assertEqual(report["uploads"], [])  # waiting uploads are not failures
+        from foxtrot.tracking.uploader import record_destination_failure
+        record_destination_failure(self.workspace, self.checkout, failed, LookupError("not configured"))
+        report = json.loads(call(app, "GET", "/api/recovery")[1])
+        self.assertEqual([item["job_id"] for item in report["uploads"]], [failed])  # a failed upload is listed
 
     # Cleanup offers only safe items, keeps registered artifacts, and re-checks before deleting.
     def test_safe_cleanup(self):

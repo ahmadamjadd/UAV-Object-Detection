@@ -45,6 +45,7 @@ SPLITS = {"train": "train/images", "val": "val/images"}
 
 # Minimal progress reporter for this process; cancellation is the coordinator's job (it stops us).
 class _Quiet:
+    # Silent reporter: generation of frozen validation images runs without progress output.
     def progress(self, payload): pass
     def log(self, payload): pass
     def wait_cancelled(self, seconds=0.0): return False

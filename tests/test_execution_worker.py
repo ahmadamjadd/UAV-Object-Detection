@@ -20,7 +20,9 @@ from foxtrot.persistence.jobs import create_recorded_job, get_job_record
 from foxtrot.persistence.processes import Liveness, ProcessIdentity, probe_execution_group
 
 
+# The real worker process runs, cancels and recovers jobs.
 class WorkerAcceptanceTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h5-worker-")
         self.addCleanup(temporary.cleanup)
@@ -33,6 +35,7 @@ class WorkerAcceptanceTests(unittest.TestCase):
         self.jobs = []
         self.addCleanup(self.cleanup_workers)
 
+    # Record a fake job with the given number of steps.
     def submit(self, key="first", epochs=7, workspace=None):
         workspace = workspace or self.workspace
         directory = create_recorded_job(workspace, self.checkout, {
@@ -41,6 +44,7 @@ class WorkerAcceptanceTests(unittest.TestCase):
         self.jobs.append((workspace, directory.name))
         return directory.name
 
+    # Start a worker process with fake-job settings.
     def start(self, fixture=None, *, once=False, workspace=None):
         settings = self.root / f"fixture-settings-{len(self.workers)}.json"
         settings.write_text((fixture or FixtureSettings()).model_dump_json())
@@ -54,6 +58,7 @@ class WorkerAcceptanceTests(unittest.TestCase):
         self.workers.append(process)
         return process
 
+    # Stop any worker still running after the test.
     def cleanup_workers(self):
         for process in self.workers:
             if process.poll() is None:
@@ -71,9 +76,11 @@ class WorkerAcceptanceTests(unittest.TestCase):
                 stop_session(ProcessIdentity(record.process_pid, record.process_start_id),
                              terminate_seconds=0.2, kill_seconds=1.0)
 
+    # The job's current stored record.
     def record(self, job):
         return get_job_record(self.workspace, self.checkout, job)
 
+    # Wait until a condition returns something, or fail after a timeout.
     def wait_for(self, predicate, *, timeout=15):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -83,9 +90,11 @@ class WorkerAcceptanceTests(unittest.TestCase):
             time.sleep(0.02)
         self.fail("Timed out waiting for worker fixture; " + str([(p.pid, p.poll()) for p in self.workers]))
 
+    # Wait until the job reaches one of the given states.
     def wait_state(self, job, states):
         return self.wait_for(lambda: (r if (r := self.record(job)).execution_state in states else None))
 
+    # Wait for a worker to exit successfully.
     def wait_done(self, process):
         stdout, stderr = process.communicate(timeout=20)
         self.assertEqual(process.returncode, 0, stderr.decode())
@@ -239,6 +248,7 @@ class WorkerAcceptanceTests(unittest.TestCase):
         request_cancel(self.workspace, self.checkout, job)
         process = self.start()
 
+        # True while a worker holds the workspace lock.
         def lease_held():
             if not (self.runtime / "worker.lock").exists():
                 return False

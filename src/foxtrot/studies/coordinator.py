@@ -103,6 +103,7 @@ def _ask(spec: StudySpec, study, combined_models: list[str] | None):
 
 # Moves every running study forward; runs as a background thread in the launcher.
 class StudyCoordinator:
+    # The workspace and how often to check the studies.
     def __init__(self, workspace: Path, checkout: Path, *, interval: float = 3.0):
         self.workspace, self.checkout = Path(workspace), Path(checkout)
         self.interval = interval
@@ -343,6 +344,9 @@ class StudyCoordinator:
             trial.update(state="failed", error=f"Could not create the trial job: {error}"[:500], finished_at=now())
             write_trial(self.workspace, self.checkout, study_id, trial)
             return self._tell(study_id, spec, trial, "fail")
+        from foxtrot.persistence.labels import read_labels, set_label
+        if directory.name not in read_labels(self.workspace, self.checkout)["jobs"]:  # readable name for the trial run
+            set_label(self.workspace, self.checkout, "jobs", directory.name, f"{spec.name[:60]} · trial {trial['number']}")
         trial.update(state="running", job_id=directory.name, started_at=now())
         write_trial(self.workspace, self.checkout, study_id, trial)
 

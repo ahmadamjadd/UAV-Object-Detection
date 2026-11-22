@@ -136,6 +136,7 @@ class UltralyticsTrainer:
         mode = self._mode(request)
         if mode == "resume":
             _check_resumable(source)
+        _check_device(settings.device)
         model = YOLO(source)
         reporter.log({"action": "model_loaded", "initialization": mode,
                       "source": Path(source).name, "weights_sha256": weights_sha256})
@@ -193,6 +194,18 @@ class UltralyticsTrainer:
         )
 
 
+# A requested GPU must really be usable now (a driver can stop between submitting and training).
+def _check_device(device: str) -> None:
+    if device == "cpu":
+        return
+    import torch
+
+    index = int(device.split(":")[1])
+    if not torch.cuda.is_available() or index >= torch.cuda.device_count():
+        raise PipelineFailure("gpu_unavailable", f"{device} is not available on this computer (no usable CUDA GPU). "
+                              "Choose CPU or fix the GPU driver.")
+
+
 # V7: refuse a last.pt this runtime cannot continue (other Ultralytics version, or already complete).
 def _check_resumable(path: str) -> None:
     import torch
@@ -224,7 +237,8 @@ class UltralyticsEvaluator:
         YOLO = _load_ultralytics(job / "output")
         model = YOLO(str(checkpoint))  # remembers its training image size, so scoring matches training
         try:
-            results = model.val(data=str(data_yaml), device="cpu", plots=request.plots, verbose=False,
+            _check_device(request.device)
+            results = model.val(data=str(data_yaml), device=request.device, plots=request.plots, verbose=False,
                                 project=str(job / "output"), name="evaluation", exist_ok=False,
                                 **EVALUATION_CONFIG)
         except Exception as error:

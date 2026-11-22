@@ -14,6 +14,7 @@ from foxtrot.persistence.files import write_new_text
 from .contracts import DatasetInput
 
 
+# The data.yaml contents YOLO needs for this dataset.
 def yolo_data_config(dataset: DatasetInput) -> dict:
     metadata = dataset.metadata
     return {

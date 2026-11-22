@@ -222,7 +222,7 @@ class AdaptiveStudyTests(StudyCase):
         study = self.create(sampler="random", trials_per_model=8, pruning=True, seed=3,
                             base_training={"epochs": 6, "optimizer": "SGD"},
                             search_space=[{"name": "lr0", "type": "float", "low": 0.001, "high": 0.1, "log": True}])
-        worker = self.worker(fixture_epoch_seconds=0.15)
+        worker = self.worker(fixture_epoch_seconds=0.4)  # slow enough to observe epochs even on a busy machine
         stop = threading.Event()
 
         # Keep the worker processing jobs in the background, like the real launcher.
@@ -238,7 +238,7 @@ class AdaptiveStudyTests(StudyCase):
                 self.coordinator.step()
                 if read_study(self.workspace, self.checkout, study)[2]["state"] == "finished":
                     break
-                time.sleep(0.1)
+                time.sleep(0.05)
         finally:
             stop.set()
             thread.join(30)
@@ -255,7 +255,7 @@ class AdaptiveStudyTests(StudyCase):
         for trial in result["trials"]:
             sync_job_tracking(self.workspace, self.checkout, trial["job_id"], client,
                               extra_run_tags=lambda tags: trial_run_tags(self.workspace, self.checkout, client, "local", tags))
-        self.assertEqual(finalize_studies(self.workspace, self.checkout, lambda _d: client),
+        self.assertEqual(finalize_studies(self.workspace, self.checkout, lambda *_: client),
                          [{"study_id": study, "finalized": True}])
         parent_id, parent = next((i, r) for i, r in client.runs.items() if r["tags"].get("foxtrot.kind") == "study")
         children = [r for r in client.runs.values() if r["tags"].get("mlflow.parentRunId") == parent_id]

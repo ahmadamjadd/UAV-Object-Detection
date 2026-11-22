@@ -1,6 +1,6 @@
 # Team Foxtrot implementation handoff
 
-Updated: **20 November 2026, Asia/Karachi** (all slices V1–V8 implemented, committed and pushed: V7/V8 `24b2300`, V4–V6 `941451d`).
+Updated: **22 November 2026, Asia/Karachi** (all steps H1–H7 and V1–V8 complete; interface redesign, names, early stopping, GPU selection, member-named experiments, repository tidy-up; committed and pushed on 22 November 2026).
 
 ## Objective and scope
 
@@ -20,26 +20,75 @@ Build Option C: a local Python application serving the browser UI and API, with 
 
 ## Current milestone and approval state
 
-**V7 and V8 complete (20 November 2026):** recovery screen, resume from last.pt, classified upload errors, crash-boundary reconciliation; setup check, member attribution, safe cleanup, release record, version 0.9.0, upgrade and team-server checks; 292/292 tests, 1,216 protected files unchanged. Committed as `24b2300` and pushed. Release candidate: two-computer pilot pending.
+**Everything in the plan is implemented.** Foundation H1–H7 and slices V1–V8 are committed and
+pushed on `foundation-h4-h7` (last slice commit `24b2300`, handoff `ebdea14`); `main` is unmerged.
+The work after V8 (interface redesign, names, terminal, early stopping, GPU selection,
+experiment names, tidy-up; sections below) was committed and pushed on 22 November 2026 at the
+user's request ("push everything to github"); 299/299 tests, 1,216 protected files unchanged.
 
-**V5 and V6 complete (20 November 2026):** tuning studies (grid/random/TPE, conditional and log spaces, equal-budget and combined model comparison, recipe tuning with frozen validation, pruning, repeats, stop/resume) with MLflow parent/child runs; Optuna 5.0.0 added to the lock; 285/285 tests, 1,216 protected files unchanged; live real-YOLO studies verified. Not committed (together with V4). **V7–V8 not implemented; V7 awaits approval.**
+Remaining open items are verification only: a two-member pilot on two computers, a training
+run on a working NVIDIA GPU, and real labeled flight images.
 
-**V4 complete (20 November 2026):** dataset roles, labeled real-image sets with flight groups, evaluation jobs with the fixed `foxtrot-eval-v1` configuration, unlabeled previews, DVC revision import; 274/274 tests, 1,216 protected files unchanged; verified with sample images (no real flight data yet). Not committed. **V5–V8 not implemented; V5 awaits approval.**
+Slice history (details in the plan's progress list and the verification section):
 
-**V3 complete (20 November 2026):** 20-model registry, per-job start mode with traceable starting weights, 38 validated training settings forwarded and logged, coverage report, schema-built form with JSON editor; 267/267 tests, 1,216 protected files unchanged; live runs verified. Committed with V2 as `1dfd3e6` and pushed to GitHub (`foundation-h4-h7`). **V4–V8 not implemented; V4 awaits approval.**
+| Step | Completed | Commit |
+| --- | --- | --- |
+| H1–H7, Python 3.14 switch | 15 Oct – 11 Nov 2026 | `f60b96d` |
+| V1 real training + MLflow (DagsHub verified by the user) | 18 Nov 2026 | `6075f7f`, `dc7222a` |
+| V2 dataset generation, V3 models and settings | 19–20 Nov 2026 | `1dfd3e6` |
+| V4 evaluation and DVC, V5/V6 tuning studies | 20 Nov 2026 | `941451d` |
+| V7 recovery, V8 release 0.9.0 | 20 Nov 2026 | `24b2300` |
+| Interface redesign and follow-ups, tidy-up | 21–22 Nov 2026 | pushed 22 Nov 2026 |
 
-**V2 complete (19 November 2026):** generate → preview → split → train → MLflow from the browser; 259/259 tests, 1,216 protected files unchanged; live run verified. Committed in `1dfd3e6`.
+## Interface redesign and follow-ups — 21 November 2026
 
-**V1 complete (18 November 2026)** on top of the H1–H7 foundation: real YOLOv8n training from the browser with automatic MLflow upload; the user synced a real job to DagsHub (experiment "Foxtrot Detection", ID 2). Full suite 244/244, 1,216 protected files unchanged. **V2–V8 are not implemented; V2 awaits approval.** V1.1–V1.7 committed as `6075f7f`, V1.8–V1.10 and docs as `dc7222a`, both pushed to GitHub.
+At the user's request, the browser interface was rebuilt from the supplied design package
+(`foxtrot-ui-design.zip`, now kept outside the repository in the user's home folder). Six pages
+(Home, Datasets, Train, Runs, Evaluate, Settings) replace the eight V1–V8 tabs; all mock data
+replaced by the real API; two small API additions (job list summary fields, dataset image counts
+and warnings). Verified in headless Chrome on a seeded workspace (real training, study,
+evaluation and preview submitted through the pages, no JavaScript errors, light/dark/narrow
+layouts); 292/292.
 
-**Python 3.14 switch (11 November 2026):** `pyproject.toml` requires `>=3.14,<3.15`; `.python-version` is 3.14.4; `requirements.txt` regenerated with uv 0.8.22 constrained to the identical 186 H1 versions (only hashes changed; PyPI hashes for all files). The broken 3.12 environment was deleted at the user's request after verification; new `.venv` links to `/usr/bin/python3.14` explicitly. Docs updated. Docker for teammates is planned after project completion, using the same Python 3.14 and lock.
+Follow-ups the same day, each at the user's request:
 
-**Git (11 November 2026):** all H4–H7 work and the Python 3.14 switch are committed as `f60b96d` ("Complete foundation H4–H7 and move to Python 3.14") on branch `foundation-h4-h7`, pushed to the `github` remote at the user's request. `main` (tracking DagsHub `origin`) is unchanged and not merged. Working tree clean after the commit.
+- Member-chosen names for datasets and runs (`persistence/labels.py`, API, MLflow run names; `tests/test_labels.py`) and a large training-output terminal under the runs table (294/294).
+- Early stopping as its own group (switch + patience; off sends `patience=0`; `foxtrot.stopped_early` tag).
+- "Run on": CPU or a detected GPU (`api/gpu.py`, separate-process PyTorch probe, cached, plain reasons; `GET /api/system/gpu`; absent GPUs refused at submission, study creation and in the trainer; evaluation on the training device); `amp` exposed (coverage 39/15/13/46).
+- Editable MLflow experiment name per tracking destination; the Train page names the target experiment and run.
+- `tests/test_device_early_stop.py` (3); the study pruning test made robust under load. Full suite 297/297.
+
+The user's laptop has an RTX 3050 6GB, but its NVIDIA driver is not loaded: Secure Boot rejects
+the DKMS-built module for the new kernel (unenrolled MOK). Foxtrot correctly reports no GPU; the
+user was given the commands to install Canonical-signed proprietary modules (`nvidia-driver-595`
+with `linux-modules-nvidia-595-generic-hwe-26.04`).
+
+## Repository tidy-up — 22 November 2026
+
+At the user's request ("remove every file not required … make everything tidy"):
+
+- Removed: the accidentally committed ImageMagick screenshots `tempfile` and `unittest`
+  (11 MB each), `build/`, `src/foxtrot_local.egg-info/` (the editable install keeps its own
+  metadata), a stray `weights/yolo26n.pt` (now ignored with `/weights/` and `/*.pt`), `__pycache__`
+  folders; the design zip moved to `~/foxtrot-ui-design.zip`.
+- Moved: the plan and this handoff to `docs/project/` (this file renamed to
+  `implementation_status.md`), research/roadmap/verification notes to `docs/history/`;
+  all links updated and checked. README rewritten as the entry point (start, pages, docs, layout).
+- Comments: every class and function in `src/foxtrot` and the frontend has a plain comment
+  (161 Python and 32 TypeScript added); test classes and helpers too (109); `test_*` methods
+  are named for what they check.
+- Removed unused interface code (`useLoad`, `formatTime`, two CSS rules) and rebuilt the interface.
+- Docs updated: training.md (early stopping, GPU, experiment), application.md, release.md
+  (coverage 39/13, GPU status), plan status, screens and acceptance status.
+- Verified: `.venv/bin/python -B scripts/verify_baseline.py` **297/297 passed** (277.7 s), **1,216 protected files unchanged**; frontend type check (no unused code) and build pass; all Markdown links resolve.
 
 ## Implemented work
 
 | Area / paths | Current outcome |
 | --- | --- |
+| Redesign: frontend/src/App.tsx, ui.tsx, live.ts, pages/{Home,Datasets,Train,Runs,Evaluate,Settings,Studies}.tsx, public/fox-logo.svg; old tab files removed; static rebuilt | Six-page interface with hash routing, shared components, live job events, names, terminal, device choice, early-stopping help, experiment hint |
+| Follow-ups: persistence/labels.py, api/gpu.py, api/app.py, api/system.py, config/training.py, pipeline/{ultralytics_adapter,coverage,contracts}.py, execution/child.py, tracking/plan.py, studies/coordinator.py | Member names, GPU detection and refusal, early-stopping switch, `amp`, device-aware evaluation, `foxtrot.stopped_early` and `foxtrot.name` tags, trial names |
+| Follow-up tests: tests/test_labels.py (2), tests/test_device_early_stop.py (3) | Names stored/cleaned/renamed; early-stop switch, device values, absent GPU refused with its reason |
 | H1: pyproject.toml, requirements.txt, requirements-dev.in, .python-version, .nvmrc, frontend manifests/lock, src/foxtrot package boundaries | Installable foxtrot-local 0.1.0; pinned Linux x86_64 / Python 3.12 baseline and frontend development dependencies |
 | H2: src/foxtrot/config/{training,job,dataset,snapshot,checkpoint,evaluation,result,event}.py; tests/test_config_contracts.py | Strict/frozen versioned request/result contracts; submitted/resolved snapshots; dataset/checkpoint/evaluation identities; finite JSON event payloads |
 | H3: src/foxtrot/persistence/workspace.py | External workspace validation/marker; managed jobs/settings/models/datasets/tracking-outbox directories; rejects redirected directories |
@@ -314,7 +363,7 @@ totals; fixture checkpoint bytes are not real models.
 
 - H1 agent checks under its separate exception: editable environment 21/21 regressions in 58.542s; fresh same-machine wheel environment 21/21 in 57.674s. Both preserved 1,216 protected files. Dependency checks, CPU Torch/Torchvision operations, and temporary frontend build passed.
 - H2 user reported individual checks and the completion verifier passed; full original output/timing was not supplied. H3's full run now independently verifies the retained H2 checks.
-- Historical 10 October remediation evidence remains in repository_verification.md; it is distinct from current H3 evidence.
+- Historical 10 October remediation evidence remains in [docs/history/repository_verification.md](../history/repository_verification.md); it is distinct from current H3 evidence.
 - User manually reported H3 checks passing through H3.8, including all 39 tests. Agent independently reran those before completing H3.
 
 ## Repository state and changes to preserve
@@ -325,13 +374,13 @@ Base `349954e` on `main`. Branch `foundation-h4-h7` (GitHub): `f60b96d` foundati
 - Keep n as images per class and generator size separate from training imgsz. Preserve all six original regression files.
 - Legacy `src/train.py`, `src/test.py`, `src/split_dataset.py`, `src/class_names.py`, generator, params and DVC files are unchanged and remain the CLI path.
 - The built interface in `src/foxtrot/api/static/` is committed deliberately; rebuild it with `cd frontend && npm run build` after frontend changes, and restart the launcher after backend changes.
-- User workspace `~/foxtrot-workspace-v1` holds the user's real data (dataset `foxtrot-shapes`, weights, DagsHub destination with private credentials, synced jobs); do not modify it without asking.
+- User workspace `~/foxtrot-workspace-v1` was deleted entirely at the user's request on 22 November 2026 (fresh start), and the 11 Foxtrot runs on DagsHub were deleted (moved to MLflow's trash); the 5 original-pipeline runs in `YOLOv8_UAV_Detection` were kept. A new workspace holds the user's data and private DagsHub credentials; do not modify it without asking.
 - No applicable AGENTS.md was found in the repository or ancestor chain during inspection.
 
 ## Exact next proposed action
 
-All slices are implemented, committed and pushed on `foundation-h4-h7` (V7/V8 `24b2300`); `main` is still unmerged. On 21 November 2026 an editor action had deleted the V4 section of persistence/dataset_import.py; it was restored from `941451d`. Remaining work is outside code: a two-member pilot on two computers, other OS/GPU verification, real labeled flight images, and DagsHub checks with the V2–V8 features (see docs/release.md "Not yet verified"). Real labeled flight data is still needed for meaningful V4 results. The user's own Foxtrot instance on `~/foxtrot-workspace-v1` was running pre-V3 code during these checks and must be restarted to use V3–V6.
+Everything is committed and pushed on `foundation-h4-h7` (GitHub); `main` is unmerged. Next, when
+the user wants: merge into `main` (needs explicit approval), a training run on a working NVIDIA GPU
+once the driver loads, the two-computer pilot, and real labeled flight images.
 
-Previous next action (done): start **V2 — generate a Foxtrot dataset in the browser, preview it, and train** (plan section 3): explicit-input generator adapter behind the H6 `DatasetGenerator`/`DatasetSplitter` contracts (workspace-local letter resources, `images_per_class` and `canvas_size` distinct from training image size), generation as a job with progress/cancel, preview of samples/boxes/class counts, caching by recipe + seed + inputs, then train. Propose V2 as small substeps under the manual workflow.
-
-Open items: GPU, other operating systems and Docker unverified; second-machine install deferred to Docker; ambiguous ownership remains held for V7 recovery; uploads only run while Foxtrot is open.
+Open items: GPU training, other operating systems and Docker unverified; second-machine install deferred to Docker; ambiguous ownership remains held for V7 recovery; uploads only run while Foxtrot is open.

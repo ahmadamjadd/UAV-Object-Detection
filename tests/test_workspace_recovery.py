@@ -23,7 +23,9 @@ from foxtrot.persistence.recovery import (
 )
 
 
+# After a crash, jobs are reconciled from process evidence.
 class RecoveryTests(unittest.TestCase):
+    # Before each test: a workspace with one job.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h4-recovery-")
         self.addCleanup(temporary.cleanup)
@@ -35,17 +37,21 @@ class RecoveryTests(unittest.TestCase):
         self.job = create_recorded_job(self.workspace, self.checkout, request, "first").name
         self.second = create_recorded_job(self.workspace, self.checkout, request, "second").name
 
+    # The job's current stored record.
     def record(self):
         return get_job_record(self.workspace, self.checkout, self.job)
 
+    # Run crash recovery.
     def reconcile(self):
         return reconcile_jobs(self.workspace, self.checkout)
 
+    # Run one SQL statement in a transaction.
     def sql(self, statement, values=()):
         with connect_database(self.workspace, self.checkout) as connection:
             with connection:
                 connection.execute(statement, values)
 
+    # Start a helper process that owns the job.
     def start_owner(self, mode="owner"):
         fixture = Path(__file__).parent / "fixtures" / "lifecycle_owner.py"
         process = subprocess.Popen(
@@ -70,6 +76,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(reports[-1]["job_id"], self.job)
         return process
 
+    # Stop the helper process and its child.
     @staticmethod
     def stop_owner(process):
         # The stdin writer belongs to this test. Closing it stops an attached
@@ -258,6 +265,7 @@ print(json.dumps({'state': record.execution_state, 'events': len(read_job_events
         self.assertIsNone(owner.poll())
 
 
+# Process identities tell live, dead and reused processes apart.
 class ProcessEvidenceTests(unittest.TestCase):
     def test_current_process_birth_identity_is_live(self):
         identity = capture_process_identity(os.getpid())

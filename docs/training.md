@@ -1,6 +1,6 @@
-# V1: train an existing dataset from the browser and open it in MLflow
+# Training
 
-V1 is the first complete workflow: import a YOLO detection dataset, train YOLOv8n
+Training started as V1, the first complete workflow: import a YOLO detection dataset, train YOLOv8n
 for real, follow progress, and find the exact run in MLflow. It builds on the
 foundation (H1–H7); see [application.md](application.md) for the website/API
 shell and [adapters.md](adapters.md) for the pipeline/tracking boundaries.
@@ -71,7 +71,7 @@ python -m foxtrot.tracking.sync --workspace W --source-checkout C run [--job ID]
   again by hash before training). MLflow records `initialization`,
   `model.initialization` and `model.start_weights_sha256`.
 - **Settings** (`config/training.py`): training, optimizer/learning rate, loss
-  weights, augmentation and runtime groups (38 Ultralytics keys). Each field
+  weights, augmentation early stopping and runtime groups (39 Ultralytics keys plus the early-stopping switch). Each field
   carries its group, description and Ultralytics key; the form is built from the
   schema and "Edit as JSON" sends the same request through the same checks.
   `optimizer: auto` picks its own `lr0`, `momentum` and `warmup_bias_lr`
@@ -79,19 +79,45 @@ python -m foxtrot.tracking.sync --workspace W --source-checkout C run [--job ID]
   optimizer gets Ultralytics' defaults filled in and saved. All values are logged
   as `training.*` parameters; the job's `output/train/args.yaml` shows what YOLO used.
 - **Coverage** (`pipeline/coverage.py`, `GET /api/coverage`, shown beside the
-  form): every key of the pinned Ultralytics `default.yaml` is exposed (38),
+  form): every key of the pinned Ultralytics `default.yaml` is exposed (39),
   managed by Foxtrot (15, e.g. data/project/name/resume), unsupported with a
-  reason (14, e.g. evaluation thresholds kept fixed, GPU-only options), or
+  reason (13, e.g. evaluation thresholds kept fixed, unverified options), or
   inapplicable to detection training (46). Generator options are listed the same
   way. A test fails if a new runtime key is unclassified or an exposed key does
   not reach training.
 
-## Limits (later slices)
+## Early stopping, GPU and experiment names
 
-- CPU device only; GPU options are listed as unsupported until verified.
+- **Early stopping** (Train › Early stopping): an on/off switch and *patience*. After
+  every epoch YOLO scores the validation images (mAP50-95); if the score has not improved
+  for *patience* epochs, training stops and the best checkpoint is kept. Off sends
+  `patience=0` (never stop early); a patience of at least the epoch count never triggers.
+  A run that stopped early says so on the Runs page and gets the MLflow tag
+  `foxtrot.stopped_early`.
+- **Run on** (Train and tuning studies): CPU or a detected NVIDIA GPU (`cuda:N`).
+  `api/gpu.py` asks PyTorch in a short separate process (the website never imports
+  PyTorch), caches the answer, and explains a missing GPU in plain words: CPU-only
+  PyTorch, no NVIDIA driver, or a driver that is installed but not running (for example
+  rejected by Secure Boot after a kernel update). Settings › GPU shows the result and
+  *Check again*. A GPU that is not present is refused at submission; the trainer checks
+  again before starting (`gpu_unavailable`); evaluation runs on the training device.
+  *Mixed precision* (`amp`) is a setting: faster on a GPU, ignored on the CPU.
+- **MLflow experiment = member name**: an experiment is a folder of runs. Every run is
+  uploaded into an experiment named after the member who trained it (Settings › Member;
+  recorded when the job finishes, so renaming later does not move it). The destination's
+  experiment name is only a fallback until a member name is set. A study's trials always
+  join the experiment of the study's parent run. The run inside carries the run's name.
+- **Comparison parameters**: every run logs `run.name` and `run.short_id` (different for each
+  run, useful as the first axis of MLflow's parallel-coordinates chart); a study's parent run
+  also logs `model_id` and `dataset_id`. For runs uploaded before these existed:
+  `.venv/bin/python -m foxtrot.tracking.sync --workspace <ws> --source-checkout . backfill`
+  adds only the missing keys (never changes an existing value; safe to repeat).
+
+## Limits
+
 - DVC datasets and real-image evaluation: see [evaluation.md](evaluation.md).
 - Raw stdout/stderr logs are kept locally and not uploaded.
 - No automatic redirect to MLflow; the View in MLflow button appears once synced.
 - Uploads run while Foxtrot is open; a job finished while it was closed is sent at the next start.
-- Verified on this Ubuntu x86_64 machine (Python 3.14.4, CPU). A second machine
+- Verified on this Ubuntu x86_64 machine (Python 3.14.4, CPU); GPU training is implemented but not yet verified on a working GPU. A second machine
   is deferred to the planned Docker image after the project is complete.

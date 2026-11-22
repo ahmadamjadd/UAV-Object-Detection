@@ -10,18 +10,21 @@ import os
 from pathlib import Path
 
 
+# Whether a recorded process is still running.
 class Liveness(StrEnum):
     ALIVE = "alive"
     DEAD = "dead"
     UNKNOWN = "unknown"
 
 
+# A process ID plus its start identity, so a reused ID is not mistaken for it.
 @dataclass(frozen=True)
 class ProcessIdentity:
     pid: int
     start_id: str
 
 
+# The parts of /proc/<pid>/stat we need.
 @dataclass(frozen=True)
 class _Snapshot:
     state: str
@@ -31,6 +34,7 @@ class _Snapshot:
     start: str
 
 
+# This boot and process namespace, part of every start identity.
 def _context() -> tuple[str, str]:
     return (
         Path("/proc/sys/kernel/random/boot_id").read_text().strip(),
@@ -38,6 +42,7 @@ def _context() -> tuple[str, str]:
     )
 
 
+# Read a process's state, parent, group and start time from /proc.
 def _snapshot(pid: int) -> _Snapshot:
     # The command name in parentheses can itself contain spaces or ')'.
     value = Path(f"/proc/{pid}/stat").read_text()
@@ -58,6 +63,7 @@ def capture_process_identity(pid: int) -> ProcessIdentity:
     return ProcessIdentity(pid, "|".join((boot, namespace, snapshot.start)))
 
 
+# Dead if recorded in another boot; unknown if in another namespace.
 def _identity_context(identity: ProcessIdentity) -> Liveness | None:
     boot, namespace, _ = identity.start_id.split("|")
     current_boot, current_namespace = _context()

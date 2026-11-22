@@ -15,19 +15,23 @@ from .contracts import RunHandle
 from .plan import JOB_TAG
 
 
+# In-memory MLflow stand-in for tests; can fail a call once on purpose.
 class RecordingTrackingClient:
+    # Empty run store and optional calls that fail once.
     def __init__(self, *, fail_once: set[str] | None = None, base_url: str = "http://tracking.invalid"):
         self.fail_once = set(fail_once or ())
         self.base_url = base_url
         self.runs: dict[str, dict] = {}
         self.calls: list[str] = []
 
+    # Record a call and fail it once if planned.
     def _call(self, name: str) -> None:
         self.calls.append(name)
         if name in self.fail_once:
             self.fail_once.discard(name)
             raise ConnectionError("fixture tracking outage")
 
+    # Find the run tagged with this job.
     def find_run(self, job_id: str) -> RunHandle | None:
         self._call("find_run")
         for run_id, run in self.runs.items():
@@ -35,6 +39,7 @@ class RecordingTrackingClient:
                 return RunHandle(run_id, f"{self.base_url}/runs/{run_id}")
         return None
 
+    # Create a run in memory.
     def create_run(self, job_id: str, run_name: str, tags: dict[str, str]) -> RunHandle:
         self._call("create_run")
         run_id = uuid4().hex
@@ -42,6 +47,7 @@ class RecordingTrackingClient:
                              "metrics": [], "artifacts": [], "status": "RUNNING"}
         return RunHandle(run_id, f"{self.base_url}/runs/{run_id}")
 
+    # Store settings (a changed value is an error, as in MLflow).
     def log_params(self, run_id: str, params: dict[str, str]) -> None:
         self._call("log_params")
         saved = self.runs[run_id]["params"]
@@ -50,15 +56,18 @@ class RecordingTrackingClient:
                 raise ValueError("Logged parameters are immutable")
             saved[key] = value
 
+    # Store metric values.
     def log_metrics(self, run_id: str, metrics: Sequence[MetricPoint]) -> None:
         self._call("log_metrics")
         self.runs[run_id]["metrics"].extend((m.key, m.value, m.step) for m in metrics)
 
+    # Store the file's name and hash.
     def log_artifact(self, run_id: str, local_path: Path, artifact_path: str) -> None:
         self._call("log_artifact")
         digest = hashlib.sha256(Path(local_path).read_bytes()).hexdigest()
         self.runs[run_id]["artifacts"].append((artifact_path, Path(local_path).name, digest))
 
+    # Store the final status.
     def set_terminated(self, run_id: str, status: str) -> None:
         self._call("set_terminated")
         self.runs[run_id]["status"] = status

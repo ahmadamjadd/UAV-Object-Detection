@@ -66,6 +66,7 @@ def attach_execution_process(
             return _record(_required_row(connection, job_id))
 
 
+# Whether the job's worker and child processes are still alive.
 def _evidence(row) -> tuple[Liveness, Liveness]:
     owner = Liveness.UNKNOWN
     if row["owner_pid"] is not None and row["owner_start_id"] is not None:

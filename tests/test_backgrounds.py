@@ -11,12 +11,15 @@ import numpy as np
 from src.data_generation.backgrounds import discover_backgrounds, read_background
 
 
+# Background image checks used by the generator.
 class BackgroundTests(unittest.TestCase):
+    # Before each test: an empty temporary folder.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(prefix="foxtrot-backgrounds-")
         self.addCleanup(self.fixture.cleanup)
         self.root = Path(self.fixture.name)
 
+    # Write a small solid-colour test image.
     def write_image(self, name):
         path = self.root / name
         image = np.full((17, 23, 3), (12, 80, 160), dtype=np.uint8)

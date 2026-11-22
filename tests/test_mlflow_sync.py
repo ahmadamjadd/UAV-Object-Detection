@@ -25,8 +25,10 @@ import json, os, sys
 os.environ["MLFLOW_DISABLE_TELEMETRY"] = "true"
 from mlflow.tracking import MlflowClient
 client = MlflowClient(tracking_uri=sys.argv[1])
-experiment = client.get_experiment_by_name("Foxtrot Detection")
-runs = client.search_runs([experiment.experiment_id])
+experiment = client.get_experiment_by_name(sys.argv[2] if len(sys.argv) > 2 else "Foxtrot Detection")
+runs = client.search_runs([experiment.experiment_id]) if experiment else []
+if not runs:
+    print(json.dumps({"count": 0})); raise SystemExit
 run = runs[0]
 print(json.dumps({
     "count": len(runs), "run_id": run.info.run_id, "status": run.info.status, "name": run.info.run_name,
@@ -71,9 +73,9 @@ class MlflowSyncTests(unittest.TestCase):
             env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
         return result.returncode, json.loads(result.stdout.strip().splitlines()[-1]), result.stderr
 
-    # Helper: read the run back from MLflow in a separate process.
-    def read_back(self):
-        result = subprocess.run([sys.executable, "-B", "-c", READ_BACK, self.tracking_uri], cwd=self.root,
+    # Helper: read the run back from MLflow (from one experiment) in a separate process.
+    def read_back(self, experiment="Foxtrot Detection"):
+        result = subprocess.run([sys.executable, "-B", "-c", READ_BACK, self.tracking_uri, experiment], cwd=self.root,
                                 capture_output=True, text=True, timeout=120, check=True)
         return json.loads(result.stdout.strip().splitlines()[-1])
 
@@ -87,6 +89,7 @@ class MlflowSyncTests(unittest.TestCase):
         self.assertEqual((run["count"], run["status"], run["name"]), (1, "FINISHED", f"foxtrot-{job[:8]}"))
         self.assertEqual(run["tags"]["foxtrot.job_id"], job)
         self.assertEqual(run["params"]["training.epochs"], "3")
+        self.assertEqual((run["params"]["run.short_id"], run["params"]["run.name"]), (job[:8], f"foxtrot-{job[:8]}"))
         self.assertEqual(run["loss_steps"], [1, 2, 3])
         self.assertEqual(run["eval_map"], [[3, 0.25]])
         self.assertIn("weights/best.pt", run["artifacts"])
@@ -94,6 +97,44 @@ class MlflowSyncTests(unittest.TestCase):
         association = get_run_association(self.workspace, self.checkout, job)
         self.assertEqual(association.run_id, run["run_id"])
         self.assertEqual(get_job_record(self.workspace, self.checkout, job).tracking_state, "synced")
+
+    # With a member name set, the run goes into an experiment named after the member.
+    def test_experiment_is_member_name(self):
+        from foxtrot.persistence.profile import save_profile
+        save_profile(self.workspace, self.checkout, "Ahmad")
+        job = self.finished_job()
+        save_profile(self.workspace, self.checkout, "Someone Else")  # renaming later does not move the job
+        code, results, stderr = self.sync("run")
+        self.assertEqual((code, results[0]["tracking_state"]), (0, "synced"), stderr)
+        run = self.read_back("Ahmad")
+        self.assertEqual((run["count"], run["tags"]["foxtrot.member"]), (1, "Ahmad"))
+        self.assertEqual(self.read_back()["count"], 0)
+        self.assertEqual(self.read_back("Someone Else")["count"], 0)
+        code, result, _ = self.sync("check", "local-mlflow")
+        self.assertIn("Someone Else", result["message"])
+
+    # Backfill adds the newer parameters to a run uploaded without them, and changes nothing else.
+    def test_backfill_adds_missing_parameters(self):
+        from foxtrot.persistence.tracking import record_run_association
+        job = self.finished_job()
+        make_old_run = (
+            "import os, sys; os.environ['MLFLOW_DISABLE_TELEMETRY'] = 'true'\n"
+            "from mlflow.tracking import MlflowClient\n"
+            "client = MlflowClient(tracking_uri=sys.argv[1])\n"
+            "experiment = client.create_experiment('Foxtrot Detection')\n"
+            "run = client.create_run(experiment, run_name='old run')\n"
+            "client.log_param(run.info.run_id, 'training.epochs', '3')\n"
+            "print(run.info.run_id)\n")
+        run_id = subprocess.run([sys.executable, "-B", "-c", make_old_run, self.tracking_uri], cwd=self.root,
+                                capture_output=True, text=True, timeout=120, check=True).stdout.split()[-1]
+        record_run_association(self.workspace, self.checkout, job, destination_id="local-mlflow",
+                               run_id=run_id, run_url=None)
+        code, results, stderr = self.sync("backfill")
+        self.assertEqual((code, results), (0, [{"run": job[:8], "added": ["run.name", "run.short_id"]}]), stderr)
+        run = self.read_back()
+        self.assertEqual((run["params"]["run.name"], run["params"]["run.short_id"]), ("old run", job[:8]))
+        self.assertEqual(run["params"]["training.epochs"], "3")
+        self.assertEqual(self.sync("backfill")[1], [{"run": job[:8], "added": []}])  # nothing twice
 
     # Syncing again sends nothing and never creates a second run.
     def test_second_sync_changes_nothing(self):

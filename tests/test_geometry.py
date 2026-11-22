@@ -17,7 +17,9 @@ sys.path.insert(0, str(ROOT / 'src/data_generation'))
 g = importlib.import_module('DataSetGeneration')
 
 
+# Drawn shapes and their YOLO boxes match.
 class GeometryTests(unittest.TestCase):
+    # The drawn pixels lie exactly inside the recorded box.
     def assert_box_matches(self, image, data):
         yy, xx = np.where(np.any(image != 180, axis=2))
         self.assertGreater(xx.size, 0)
@@ -99,6 +101,7 @@ class GeometryTests(unittest.TestCase):
                     values[name] = str(path)
                 raw = []
                 original = g.draw_shape
+                # Keep each placement result while the generator runs.
                 def capture(*args, **kwargs):
                     result = original(*args, **kwargs)
                     if result[0] is not None:

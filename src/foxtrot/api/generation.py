@@ -29,6 +29,7 @@ class GenerationBusy(RuntimeError):
 
 # Keeps track of generation runs and the one process currently running.
 class GenerationRuns:
+    # Remember the workspace; at most one generation runs at a time.
     def __init__(self, workspace: Path, checkout: Path):
         self.workspace, self.checkout = Path(workspace), Path(checkout)
         self._lock = threading.Lock()

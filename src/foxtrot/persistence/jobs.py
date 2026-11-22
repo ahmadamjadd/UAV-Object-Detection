@@ -25,6 +25,7 @@ from .processes import capture_process_identity
 class InvalidJobConfiguration(ValueError):
     """Identify the queued job whose immutable input cannot be loaded."""
 
+    # Remember which job the error is about.
     def __init__(self, job_id: str, message: str):
         super().__init__(message)
         self.job_id = job_id
@@ -68,6 +69,7 @@ class JobClaim:
     configurations: JobConfigurations
 
 
+# Turn a database row into a JobRecord.
 def _record(row: sqlite3.Row) -> JobRecord:
     values = {field.name: row[field.name] for field in fields(JobRecord)}
     for name in ("error_details", "tracking_error"):
@@ -78,6 +80,7 @@ def _record(row: sqlite3.Row) -> JobRecord:
     return JobRecord(**values)
 
 
+# The job's row, or an error if the job does not exist.
 def _required_row(connection: sqlite3.Connection, job_id: str) -> sqlite3.Row:
     row = connection.execute(
         "SELECT * FROM jobs WHERE job_id = ?", (job_id,),

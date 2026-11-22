@@ -32,6 +32,7 @@ from foxtrot.persistence.dataset_import import import_dataset, import_evaluation
 from foxtrot.persistence.dvc_datasets import DvcImportRequest
 from foxtrot.pipeline.prediction import PredictionRequest
 from foxtrot.persistence.datasets import DatasetUnavailable, list_datasets
+from foxtrot.persistence.labels import LabelError, read_labels, set_label
 from foxtrot.persistence.events import read_job_events
 from foxtrot.persistence.models import WeightsError, install_weights, list_weights
 from foxtrot.persistence.files import job_file, job_path
@@ -46,6 +47,7 @@ from foxtrot.pipeline.foxtrot_generator import generator_directory, generator_fi
 from foxtrot.pipeline.registry import PipelineSettings
 
 from .generation import GenerationBusy, GenerationRuns
+from .gpu import cached_gpus, detect_gpus
 from .security import LOOPBACK_HOSTS, require_local_session
 from .settings import DestinationUpdate, SettingsStore
 from .uploads import UploadScheduler
@@ -53,11 +55,20 @@ from .uploads import UploadScheduler
 STATIC_DIRECTORY = Path(__file__).with_name("static")
 
 
+# What the browser sends to start a job: a repeat-safe key, the job request and an optional name.
 class JobSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     submission_key: str = Field(min_length=8, max_length=200, pattern=r"^\S+$")
     request: dict[str, typing.Any]
+    name: str | None = Field(default=None, max_length=200)  # optional run name chosen by the member
+
+
+# A new name for a dataset or run; null or blank removes it.
+class LabelUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = Field(default=None, max_length=200)
 
 
 # What the browser sends to import a dataset folder from this computer.
@@ -70,6 +81,7 @@ class DatasetImport(BaseModel):
     train_images_ref: str = "train/images"
     validation_images_ref: str = "val/images"
     missing_labels: typing.Literal["background", "error"] = "background"
+    name: str | None = Field(default=None, max_length=200)  # optional name chosen by the member
     # V4: real labeled images that only score models; optionally divided into validation and test.
     role: typing.Literal["training", "validation", "test"] = "training"
     images_ref: str = "images"
@@ -98,10 +110,12 @@ class RepeatRequest(BaseModel):
     seeds: list[int] = Field(min_length=2, max_length=10)
 
 
+# The allowed values of a Literal field, e.g. the start modes a job may use.
 def _choices(model, field: str) -> list[str]:
     return list(typing.get_args(model.model_fields[field].annotation))
 
 
+# One job as the browser sees it: states, times, errors and its member-chosen name.
 def _job_view(record: JobRecord) -> dict:
     return {
         "job_id": record.job_id,
@@ -137,6 +151,7 @@ def create_app(
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(LOOPBACK_HOSTS))
     workspace, checkout = app.state.workspace, app.state.checkout
 
+    # Add the security headers (no sniffing, no referrer, strict content policy) to every response.
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         response = await call_next(request)
@@ -149,16 +164,19 @@ def create_app(
             response.headers["Cache-Control"] = "no-store"
         return response
 
+    # An unknown ID raised as KeyError becomes a plain 404 answer.
     @app.exception_handler(KeyError)
     async def unknown(_request, error: KeyError):
         return JSONResponse(status_code=404, content={"detail": str(error.args[0]) if error.args else "Not found"})
 
     # ------------------------------------------------------------ read-only
 
+    # Liveness check: the server answers and reports its database version.
     @app.get("/api/health")
     def health():
         return {"status": "ok", "database_schema_version": DATABASE_SCHEMA_VERSION}
 
+    # What this installation offers: version, models, start modes, devices and settings schema.
     @app.get("/api/capabilities")
     def capabilities():
         try:
@@ -170,7 +188,7 @@ def create_app(
             "models": _choices(JobSpec, "model_id"),
             "model_details": [{"model_id": m.model_id, "family": m.family, "variant": m.variant,
                                "display_name": m.display_name, "task": m.task} for m in MODELS.values()],
-            "devices": _choices(TrainingSettings, "device"),
+            "devices": ["cpu"] + [d["id"] for d in ((cached_gpus() or {}).get("devices") or [])],
             "pipeline_adapters": _choices(PipelineSettings, "adapter"),
             "active_pipeline_adapter": app.state.pipeline_adapter,
             "real_training": app.state.pipeline_adapter == "ultralytics",
@@ -192,7 +210,7 @@ def create_app(
     # Finished jobs whose best checkpoint a new job can start from.
     @app.get("/api/checkpoints")
     def checkpoints():
-        found = []
+        found, names = [], read_labels(workspace, checkout)["jobs"]
         for record in list_job_records(workspace, checkout, limit=200):
             if record.execution_state != "finished":
                 continue
@@ -204,19 +222,33 @@ def create_app(
                 continue
             if result.checkpoint is None or spec.kind != "train":  # evaluations do not make new checkpoints
                 continue
-            found.append({"job_id": record.job_id, "model_id": spec.model_id, "dataset_id": spec.dataset_id,
+            found.append({"job_id": record.job_id, "name": names.get(record.job_id), "model_id": spec.model_id, "dataset_id": spec.dataset_id,
                           "finished_at": record.finished_at,
                           "map50_95": result.evaluation.map50_95 if result.evaluation else None})
         return found
 
+    # Hand the per-launch session token to this website's own pages.
     @app.get("/api/session")
     def session():
         # Same-origin pages only: no CORS headers are sent, and Host is checked.
         return {"token": app.state.session_token}
 
+    # Registered datasets, plus image counts and warning totals from their saved check report.
     @app.get("/api/datasets")
     def datasets():
-        return [m.model_dump(mode="json") for m in list_datasets(workspace, checkout)]
+        found, names = [], read_labels(workspace, checkout)["datasets"]
+        for metadata in list_datasets(workspace, checkout):
+            view = metadata.model_dump(mode="json")
+            view["name"] = names.get(metadata.dataset_id)
+            try:
+                saved = json.loads((workspace.resolve() / "datasets" / metadata.dataset_id / "validation.json").read_text())
+                report = saved.get("report", saved)  # imports wrap the report; generated sets store it directly
+                view["images"] = {split: stats.get("images", 0) for split, stats in report.get("splits", {}).items()}
+                view["warning_count"] = report.get("warning_count", 0)
+            except (OSError, ValueError, AttributeError):
+                view["images"], view["warning_count"] = None, None
+            found.append(view)
+        return found
 
     # Which pretrained weights are installed (and unchanged) in this workspace.
     @app.get("/api/models")
@@ -249,6 +281,7 @@ def create_app(
         return FileResponse(app.state.generation.preview_image(run_id, name), media_type="image/jpeg",
                             headers={"Cache-Control": "no-store"})
 
+    # The configured MLflow tracking destinations (never their secrets).
     @app.get("/api/tracking/destinations")
     def destinations():
         return app.state.settings.destinations()
@@ -258,12 +291,26 @@ def create_app(
     def uploads():
         return app.state.uploads.status()
 
+    # Recent jobs with what the runs table shows: kind, model, dataset and study trial.
     @app.get("/api/jobs")
     def jobs(limit: int = 50):
         if not 1 <= limit <= 500:
             raise HTTPException(status_code=422, detail="limit must be between 1 and 500")
-        return [_job_view(record) for record in list_job_records(workspace, checkout, limit=limit)]
+        found, names = [], read_labels(workspace, checkout)["jobs"]
+        for record in list_job_records(workspace, checkout, limit=limit):
+            view = _job_view(record)
+            view["name"] = names.get(record.job_id)
+            try:
+                spec = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, record.job_id).resolved_json)
+                view.update(kind="study trial" if spec.study else ("evaluation" if spec.kind == "evaluate" else "training"),
+                            model_id=spec.model_id, dataset_id=spec.dataset_id,
+                            study=spec.study.model_dump() if spec.study else None)
+            except ValueError:
+                view.update(kind=None, model_id=None, dataset_id=None, study=None)
+            found.append(view)
+        return found
 
+    # One job in detail: record, MLflow run link, result and checkpoints.
     @app.get("/api/jobs/{job_id}")
     def job(job_id: str):
         record = get_job_record(workspace, checkout, job_id)
@@ -278,9 +325,11 @@ def create_app(
                 job_file(job_path(workspace.resolve(), job_id), "result.json").read_bytes()).model_dump(mode="json")
         except (ValueError, OSError):
             result = None
-        return {**_job_view(record), "resolved": resolved, "result": result,
+        return {**_job_view(record), "name": read_labels(workspace, checkout)["jobs"].get(job_id),
+                "resolved": resolved, "result": result,
                 "tracking_run": asdict(association) if association else None}
 
+    # The job's progress events after a given position, for live updates in the browser.
     @app.get("/api/jobs/{job_id}/events")
     def events(job_id: str, after: int = 0, limit: int = 200):
         try:
@@ -293,6 +342,15 @@ def create_app(
 
     guarded = [Depends(require_local_session)]
 
+    # A GPU device must exist here; otherwise say so before anything is queued.
+    def check_device(device: str) -> None:
+        if device == "cpu":
+            return
+        found = detect_gpus()
+        if device not in {d["id"] for d in found["devices"]}:
+            raise StartCheckpointError(f"{device} is not available on this computer. {found['message']}")
+
+    # Check and queue a new training or evaluation job (repeating the same key returns the same job).
     @app.post("/api/jobs", dependencies=guarded)
     def submit(submission: JobSubmission):
         try:
@@ -303,13 +361,38 @@ def create_app(
             spec = JobSpec.model_validate_json(resolved.resolved_json)  # and the dataset must suit the job
             check_start_checkpoint(workspace, checkout, spec)
             check_dataset_use(workspace, checkout, spec)
+            check_device(spec.training.device)
         except StartCheckpointError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         try:
             directory = create_recorded_job(workspace, checkout, submission.request, submission.submission_key)
         except ValueError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
+        if submission.name and submission.name.strip():
+            try:
+                set_label(workspace, checkout, "jobs", directory.name, submission.name)
+            except LabelError as error:
+                raise HTTPException(status_code=422, detail=str(error)) from error
         return _job_view(get_job_record(workspace, checkout, directory.name))
+
+    # Name (or rename) a run; the ID stays its identity. Null or blank removes the name.
+    @app.put("/api/jobs/{job_id}/name", dependencies=guarded)
+    def name_job(job_id: str, body: LabelUpdate):
+        get_job_record(workspace, checkout, job_id)  # unknown job -> 404
+        try:
+            return {"job_id": job_id, "name": set_label(workspace, checkout, "jobs", job_id, body.name)}
+        except LabelError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    # Name (or rename) a dataset; its ID and fingerprint stay its identity.
+    @app.put("/api/datasets/{dataset_id}/name", dependencies=guarded)
+    def name_dataset(dataset_id: str, body: LabelUpdate):
+        if dataset_id not in {m.dataset_id for m in list_datasets(workspace, checkout)}:
+            raise HTTPException(status_code=404, detail="Unknown dataset")
+        try:
+            return {"dataset_id": dataset_id, "name": set_label(workspace, checkout, "datasets", dataset_id, body.name)}
+        except LabelError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     # Upload this job's unsent results now instead of waiting for the next automatic try.
     @app.post("/api/jobs/{job_id}/retry-sync", dependencies=guarded)
@@ -319,10 +402,12 @@ def create_app(
         app.state.uploads.trigger()
         return {"queued": True}
 
+    # Ask the worker to stop a job; a running job stops at the next safe point.
     @app.post("/api/jobs/{job_id}/cancel", dependencies=guarded)
     def cancel(job_id: str):
         return _job_view(request_cancel(workspace, checkout, job_id))
 
+    # Create or change a tracking destination, including its MLflow experiment name.
     @app.put("/api/tracking/destinations/{destination_id}", dependencies=guarded)
     def save_destination(destination_id: str, update: DestinationUpdate):
         if update.destination_id != destination_id:
@@ -369,6 +454,10 @@ def create_app(
                     images_ref=body.images_ref, test_share=body.test_share)
             except (DatasetUnavailable, ValueError) as error:
                 raise HTTPException(status_code=422, detail=str(error)) from error
+            if body.name and found:  # a validation/test pair gets "(validation)" / "(test)" added
+                for dataset in found:
+                    suffix = f" ({dataset.metadata.role})" if len(found) > 1 else ""
+                    set_label(workspace, checkout, "datasets", dataset.metadata.dataset_id, body.name.strip()[:70] + suffix)
             return {"imported": bool(found), "dataset": found[0].metadata.model_dump(mode="json") if found else None,
                     "datasets": [d.metadata.model_dump(mode="json") for d in found],
                     "report": report.model_dump(mode="json")}
@@ -381,6 +470,8 @@ def create_app(
             )
         except (DatasetUnavailable, ValueError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
+        if dataset is not None and body.name:
+            set_label(workspace, checkout, "datasets", dataset.metadata.dataset_id, body.name)
         return {"imported": dataset is not None,
                 "dataset": dataset.metadata.model_dump(mode="json") if dataset else None,
                 "report": report.model_dump(mode="json")}
@@ -392,10 +483,12 @@ def create_app(
         except GenerationBusy as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    # Start a quick preview generation (a few images to look at).
     @app.post("/api/generation/preview", dependencies=guarded)
     def generation_preview(body: GenerationRequest):
         return start_generation("preview", body)
 
+    # Start generating a full dataset with the given recipe.
     @app.post("/api/generation/datasets", dependencies=guarded)
     def generation_dataset(body: GenerationRequest):
         return start_generation("dataset", body)
@@ -416,11 +509,17 @@ def create_app(
         except GenerationBusy as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
+    # Stop the running generation.
     @app.post("/api/generation/runs/{run_id}/cancel", dependencies=guarded)
     def generation_cancel(run_id: str):
         return app.state.generation.cancel(run_id)
 
     # ------------------------------------------------------------ V8 setup, profile, storage
+
+    # Which GPUs can train here (detected once in a separate process; refresh=true checks again).
+    @app.get("/api/system/gpu")
+    def gpu(refresh: bool = False):
+        return detect_gpus(refresh=refresh)
 
     # Is this installation and workspace ready? (read-only)
     @app.get("/api/system/check")
@@ -428,11 +527,13 @@ def create_app(
         from .system import system_check
         return system_check(workspace, checkout, static_directory)
 
+    # The member's profile (name used to tag their MLflow runs).
     @app.get("/api/profile")
     def profile():
         from foxtrot.persistence.profile import read_profile
         return read_profile(workspace, checkout)
 
+    # Save the member's name.
     @app.put("/api/profile", dependencies=guarded)
     def save_profile_endpoint(body: ProfileUpdate):
         from foxtrot.persistence.profile import save_profile
@@ -462,8 +563,10 @@ def create_app(
         from foxtrot.persistence.start_checkpoints import RESUMABLE_STATES, StartCheckpointError, check_resume_source
         from foxtrot.studies.store import list_study_ids, read_study, read_trials
         interrupted, holds, uploads = [], [], []
+        names = read_labels(workspace, checkout)["jobs"]
         for record in list_job_records(workspace, checkout, limit=500):
             view = _job_view(record)
+            view["name"] = names.get(record.job_id)
             try:
                 spec = JobSpec.model_validate_json(load_job_configurations(workspace, checkout, record.job_id).resolved_json)
             except ValueError:
@@ -481,7 +584,9 @@ def create_app(
                 except (StartCheckpointError, ValueError) as error:
                     view.update(resumable=False, resume_reason=str(error))
                 interrupted.append(view)
-            if record.finished_at and record.tracking_state != "synced" and list_tracking(workspace, checkout, record.job_id):
+            # Only uploads that actually failed need attention; waiting ones are sent automatically.
+            if record.finished_at and record.tracking_state in ("retrying", "failed") \
+                    and list_tracking(workspace, checkout, record.job_id):
                 uploads.append(view)
         studies = []
         for study_id in list_study_ids(workspace, checkout):
@@ -510,6 +615,7 @@ def create_app(
     def plan_study(spec: StudySpec):
         return {"planned_trials": planned_trials(spec)}
 
+    # All tuning studies with a short summary each.
     @app.get("/api/studies")
     def studies():
         from foxtrot.studies.store import list_study_ids, read_study, read_trials
@@ -523,6 +629,7 @@ def create_app(
                           "trials_started": summary["trials_started"], "best": summary["best"]})
         return found
 
+    # One tuning study: definition, trials, best result and state.
     @app.get("/api/studies/{study_id}")
     def study(study_id: str):
         from foxtrot.studies.store import read_study, read_trials, study_folder
@@ -534,12 +641,14 @@ def create_app(
                 "trials": trials, "summary": summarize(spec, record, state, trials),
                 "mlflow": json.loads(mlflow.read_text()) if mlflow.is_file() else {}}
 
+    # Check and create a new tuning study; the coordinator then starts its trials.
     @app.post("/api/studies", dependencies=guarded)
     def create_study_endpoint(spec: StudySpec):
         from foxtrot.studies.store import StudyError, create_study
         try:
+            check_device(str(spec.base_training.get("device", "cpu")))
             study_id = create_study(workspace, checkout, spec)
-        except StudyError as error:
+        except (StudyError, StartCheckpointError) as error:
             raise HTTPException(status_code=422, detail=str(error)) from error
         app.state.studies.trigger()
         return {"study_id": study_id, "planned_trials": planned_trials(spec)}
@@ -595,6 +704,7 @@ def create_app(
 
     # ------------------------------------------------------------ interface
 
+    # Any other /api path is an unknown endpoint (never the web page).
     @app.api_route("/api/{rest:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
     def unknown_api(rest: str):
         raise HTTPException(status_code=404, detail="Unknown API endpoint")
@@ -602,6 +712,7 @@ def create_app(
     if static_directory is not None and (static_directory / "index.html").is_file():
         app.mount("/", StaticFiles(directory=static_directory, html=True), name="interface")
     else:
+        # Shown instead of the website when the interface was not built.
         @app.get("/", response_class=HTMLResponse)
         def interface_missing():
             return ("<!doctype html><title>Foxtrot</title><p>The browser interface has not been built. "

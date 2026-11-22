@@ -18,6 +18,7 @@ from src.data_generation.image_size import resize_background, validate_image_siz
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# The image-size option is checked and respected.
 class ImageSizeTests(unittest.TestCase):
     def test_validation_rejects_invalid_values(self):
         for size in (0, -1, 160.0, True, False, "320", None):
@@ -31,6 +32,7 @@ class ImageSizeTests(unittest.TestCase):
         square = np.full((320, 320, 3), 50, dtype=np.uint8)
         self.assertIs(resize_background(square, 320), square)
 
+    # Run the generator with one image size and return the output folder.
     def run_generator(self, size, letters=False):
         fixture = tempfile.TemporaryDirectory(prefix="foxtrot-size-")
         self.addCleanup(fixture.cleanup)

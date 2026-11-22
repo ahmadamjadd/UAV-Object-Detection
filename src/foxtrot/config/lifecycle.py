@@ -6,6 +6,7 @@ from types import MappingProxyType
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
+# The steps a job goes through, from draft to a final outcome.
 class ExecutionState(StrEnum):
     DRAFT = "draft"
     VALIDATING = "validating"
@@ -19,6 +20,7 @@ class ExecutionState(StrEnum):
     INTERRUPTED = "interrupted"
 
 
+# Where a job's MLflow upload stands.
 class TrackingState(StrEnum):
     PENDING = "pending"
     SYNCING = "syncing"
@@ -62,6 +64,7 @@ def validate_execution_transition(current: ExecutionState, target: ExecutionStat
         raise ValueError(f"Invalid execution transition: {current} -> {target}")
 
 
+# Refuse an upload-state change that the rules do not allow.
 def validate_tracking_transition(current: TrackingState, target: TrackingState) -> None:
     if not isinstance(current, TrackingState) or not isinstance(target, TrackingState):
         raise TypeError("Tracking transitions require TrackingState values")
@@ -76,6 +79,7 @@ class ErrorDetails(BaseModel):
     code: str = Field(pattern=r"^[a-z][a-z0-9_]{0,63}$")
     message: str = Field(min_length=1, max_length=4096)
 
+    # An error must say something.
     @field_validator("message")
     @classmethod
     def nonblank_message(cls, value: str) -> str:

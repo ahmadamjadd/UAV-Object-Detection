@@ -7,7 +7,9 @@ import unittest
 from foxtrot.persistence.workspace import resolve_workspace_root
 
 
+# Workspace locations are checked safely.
 class WorkspacePathTests(unittest.TestCase):
+    # Before each test: an empty temporary folder.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-workspace-test-"

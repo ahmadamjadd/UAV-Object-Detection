@@ -8,6 +8,7 @@ import stat
 import tempfile
 
 
+# Another worker already serves this workspace.
 class WorkerAlreadyRunning(RuntimeError):
     pass
 

@@ -13,6 +13,7 @@ from .jobs import JobRecord, _record, _required_row
 from .processes import Liveness, ProcessIdentity, probe_execution_group
 
 
+# An error must be an ErrorDetails value.
 def _check_error(error: ErrorDetails | None) -> None:
     if error is not None and not isinstance(error, ErrorDetails):
         raise TypeError("Error must be an ErrorDetails value")

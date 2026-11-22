@@ -38,6 +38,7 @@ class DatasetMetadata(BaseModel):
     def can_be_tuning_objective(self) -> bool:
         return self.role != "test"
 
+    # Class names must be non-blank and unique.
     @field_validator("class_names")
     @classmethod
     def check_class_names(cls, names: tuple[str, ...]) -> tuple[str, ...]:
@@ -47,6 +48,7 @@ class DatasetMetadata(BaseModel):
             raise ValueError("Class names must be unique")
         return names
 
+    # A split folder must be a safe path inside the dataset.
     @field_validator("train_images_ref", "validation_images_ref")
     @classmethod
     def check_split_reference(cls, value: str) -> str:

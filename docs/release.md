@@ -40,9 +40,9 @@ weights. Dataset generation needs the source checkout (it runs `src/data_generat
 official pretrained weights (fingerprinted), from an earlier job's checkpoint, or resumed.
 
 **Parameter coverage** (pinned Ultralytics `default.yaml`, 113 keys, shown on the New
-training screen): 38 exposed, 15 managed by Foxtrot, 46 for other modes/tasks, **14 not
+training screen): 39 exposed, 15 managed by Foxtrot, 46 for other modes/tasks, **13 not
 offered, each with a recorded reason**: `time`, `save_period`, `single_cls`, `rect`,
-`amp`, `profile`, `multi_scale`, `compile`, `channels_last`, `nbs`, `conf`, `iou`,
+`profile`, `multi_scale`, `compile`, `channels_last`, `nbs`, `conf`, `iou`,
 `max_det`, `save_json` (fixed evaluation thresholds, GPU-only or unverified options).
 Coverage is therefore **not complete**; these are recorded gaps, not hidden ones.
 Generator: all `params.yaml` settings are exposed; command-line-only options are listed
@@ -98,7 +98,7 @@ Upgrade = stop Foxtrot (so no job is running), update the checkout, reinstall fr
 ## Evidence (20 November 2026, Ubuntu 24.04 x86_64, CPU, Python 3.14.4)
 
 - `scripts/verify_baseline.py`: all tests pass; 1,216 protected files unchanged (see
-  IMPLEMENTATION_STATUS.md for the exact counts per slice).
+  docs/project/implementation_status.md for the exact counts per slice).
 - Wheel `foxtrot_local-0.9.0` (84 files, interface included) builds and imports outside
   the checkout.
 - Live checks with real YOLO: training, DVC import of this repository's `data/split`,
@@ -111,7 +111,10 @@ Upgrade = stop Foxtrot (so no job is running), update the checkout, reinstall fr
 
 ## Not yet verified (documented, not claimed)
 
-- Other operating systems, ARM, Docker and **GPU** training.
+- Other operating systems, ARM and Docker.
+- **GPU training**: device choice, detection and refusal are implemented and tested; a
+  real run on a working GPU is pending (the development laptop's NVIDIA driver is not
+  loaded under Secure Boot).
 - A two-member pilot on two separate computers (simulated on one machine above).
 - Real labeled drone images (evaluation was exercised with generated stand-ins).
 - DagsHub with the new V2–V8 features (V1 uploads to DagsHub were verified by the user).
