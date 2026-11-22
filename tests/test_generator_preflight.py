@@ -16,7 +16,9 @@ import yaml
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+# The generator's start-up checks, run on a copy of the source.
 class GeneratorPreflightTests(unittest.TestCase):
+    # Copy the generator and its resources into a temporary folder.
     def fixture(self, directory):
         root = Path(directory)
         shutil.copytree(PROJECT_ROOT / "src", root / "src",
@@ -33,6 +35,7 @@ class GeneratorPreflightTests(unittest.TestCase):
         sentinel.write_text("keep existing outputs on invalid input")
         return root, raw, sentinel
 
+    # Run the copied generator and return the result.
     def execute(self, root):
         environment = dict(os.environ, MPLCONFIGDIR=str(root / "mpl"),
                            PYTHONDONTWRITEBYTECODE="1", TERM="dumb")

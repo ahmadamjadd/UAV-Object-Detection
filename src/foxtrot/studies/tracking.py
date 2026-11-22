@@ -43,11 +43,25 @@ def ensure_parent(workspace, checkout, client, destination_id: str, study_id: st
         params = {f"study.{k}": json.dumps(v) if isinstance(v, (dict, list)) else str(v)
                   for k, v in definition.items() if v not in (None, [], {})}
         params["study.planned_trials"] = str(record["planned_trials"])
+        # Same names as on trial runs, so the parent shows real values in comparison charts.
+        params["model_id"] = ",".join(spec.model_ids)
+        params["dataset_id"] = spec.dataset_id or "generated per trial (recipe study)"
+        params["run.name"] = f"study-{spec.name}"
+        params["run.short_id"] = study_id[:8]
         client.log_params(handle.run_id, params)
-        entry = {"run_id": handle.run_id, "url": handle.url, "finalized": False}
+        entry = {"run_id": handle.run_id, "url": handle.url, "finalized": False,
+                 "experiment": getattr(client, "experiment_name", None)}
         records[destination_id] = entry
         write_json(path, records)
     return entry["run_id"]
+
+
+# The experiment a study's parent run was created in (its trials join it), or None before the first upload.
+# "" means a parent created before experiments followed the member: it is in the destination's own experiment.
+def study_experiment(workspace, checkout, study_id: str, destination_id: str) -> str | None:
+    path = study_folder(workspace, checkout, study_id) / "mlflow.json"
+    entry = (read_json(path) if path.is_file() else {}).get(destination_id)
+    return None if entry is None else (entry.get("experiment") or "")
 
 
 # Extra tags for a trial's run: link to the parent, and the trial's recorded outcome.
@@ -80,7 +94,8 @@ def finalize_studies(workspace, checkout, client_for) -> list[dict]:
         if any(get_job_record(workspace, checkout, job).tracking_state != "synced" for job in jobs):
             continue  # wait until every trial run is uploaded
         try:
-            client = client_for(spec.tracking_destination_id)
+            client = client_for(spec.tracking_destination_id,
+                                study_experiment(workspace, checkout, study_id, spec.tracking_destination_id))
             run_id = ensure_parent(workspace, checkout, client, spec.tracking_destination_id, study_id)
             summary = summarize(spec, record, state, trials)
             write_json(folder / "summary.json", summary)

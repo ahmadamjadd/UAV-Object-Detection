@@ -12,10 +12,12 @@ from foxtrot.pipeline.contracts import DatasetInput
 from foxtrot.pipeline.registry import PipelineSettings
 
 
+# Base for messages between supervisor and child: strict and unchangeable.
 class Contract(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True, validate_default=True)
 
 
+# Settings for the fake test job (steps, delay, planned failure).
 class FixtureSettings(Contract):
     steps: int = Field(default=3, ge=1, le=100)
     step_seconds: float = Field(default=0.05, ge=0.0, le=60.0, allow_inf_nan=False)
@@ -27,6 +29,7 @@ class FixtureSettings(Contract):
     output_lines: int = Field(default=0, ge=0, le=5000)
 
 
+# What the supervisor asks the child process to run.
 class ExecutionRequest(Contract):
     schema_version: Literal[1] = 1
     runner: Literal["fixture"] = "fixture"
@@ -37,6 +40,7 @@ class ExecutionRequest(Contract):
     resolved: JobSpec
     fixture: FixtureSettings
 
+    # Paths in a request must be absolute.
     @field_validator("job_directory", "output_directory")
     @classmethod
     def absolute_path(cls, value: str) -> str:
@@ -57,20 +61,24 @@ class PipelineExecutionRequest(ExecutionRequest):
 REQUEST = TypeAdapter(Annotated[ExecutionRequest | PipelineExecutionRequest, Field(discriminator="runner")])
 
 
+# Child to supervisor: started and ready.
 class Ready(Contract):
     kind: Literal["ready"] = "ready"
 
 
+# Child to supervisor: now training or evaluating.
 class Phase(Contract):
     kind: Literal["phase"] = "phase"
     phase: Literal["training", "evaluating"]
 
 
+# Child to supervisor: a progress, log or error event.
 class Update(Contract):
     kind: Literal["update"] = "update"
     event_type: Literal["progress", "log", "error"] = "progress"
     payload: dict[str, JsonValue]
 
+    # Event data must be valid JSON (no NaN).
     @field_validator("payload")
     @classmethod
     def finite_payload(cls, value):
@@ -78,11 +86,13 @@ class Update(Contract):
         return value
 
 
+# Child to supervisor: final outcome.
 class Completed(Contract):
     kind: Literal["completed"] = "completed"
     outcome: Literal["finished", "failed", "cancelled"]
     error: ErrorDetails | None = None
 
+    # Only a failed outcome may carry an error.
     @model_validator(mode="after")
     def error_only_for_failure(self) -> Self:
         if self.error is not None and self.outcome != "failed":

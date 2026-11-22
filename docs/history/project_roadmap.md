@@ -1,7 +1,7 @@
 # UAV Object Detection MLOps Roadmap
 
 > Historical roadmap. The current direction is the local training application in
-> [implementation_plan.md](implementation_plan.md). Colab training has been retired;
+> [implementation_plan.md](../project/implementation_plan.md). Colab training has been retired;
 > Jetson deployment and training CI/CD are outside the current scope.
 
 ## 🎯 Project Objective

@@ -1,53 +1,83 @@
 # Team Foxtrot: Local YOLO Training
 
-Synthetic UAV detection data generation and local YOLO training, with DVC for
-pipeline/data provenance and MLflow for experiment tracking.
+A local website for Team Foxtrot's UAV shape detection: generate or import datasets,
+train YOLO models on your own computer (CPU or NVIDIA GPU), run tuning studies,
+evaluate on real labeled images, and find every run in MLflow (for example on DagsHub).
+DVC keeps dataset versions; the original command-line pipeline still works unchanged.
 
-## Local training website (V1)
+## Architecture
 
-Foxtrot now runs as a local website: import a YOLO dataset, train YOLOv8n for real,
-follow progress, and open the exact run in MLflow (for example on DagsHub).
+![Foxtrot system architecture](docs/architecture.svg)
+
+- **Browser**: the interface talks only to Foxtrot on this computer (127.0.0.1, with a per-launch session token).
+- **Website process**: checks requests and queues jobs; its background helpers run tuning studies, schedule MLflow uploads and start dataset work.
+- **Worker process**: runs one job at a time in a supervised child process (YOLO training, then evaluation of the exact best checkpoint), on the CPU or an NVIDIA GPU.
+- **Helper processes**: short-lived jobs (MLflow upload, the unchanged generator, DVC download, GPU check) so heavy libraries and credentials never load into the website.
+- **Workspace folder**: the single source of truth (database, jobs, datasets, models, studies, settings); processes coordinate through it, so a crash or restart loses nothing.
+- **Shared**: results go to MLflow (DagsHub or a team server); dataset versions come from Git + DVC; pretrained weights come once from Ultralytics.
+
+## Start
 
 ```bash
-foxtrot --workspace /abs/path/to/foxtrot-workspace --pipeline-adapter ultralytics
+.venv/bin/foxtrot --workspace ~/foxtrot-workspace-v1 --pipeline-adapter ultralytics
 ```
 
-The browser opens at http://127.0.0.1:8765/. Step-by-step use, what each stage
-guarantees, and current limits are in [docs/training.md](docs/training.md).
-Generating a dataset from the browser (V2) is described in [docs/generation.md](docs/generation.md).
-DVC dataset versions and evaluation on real labeled images (V4) are in [docs/evaluation.md](docs/evaluation.md).
-Tuning studies (V5/V6) are in [docs/studies.md](docs/studies.md).
-Environment setup (Python 3.14, locked dependencies) is in
-[docs/development.md](docs/development.md); architecture and delivery steps are in
-[implementation_plan.md](implementation_plan.md); current state is recorded in
-[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md).
+The browser opens at http://127.0.0.1:8765/. Stop with Ctrl+C. Setting up the
+environment (Python 3.14, locked dependencies) is described in
+[docs/development.md](docs/development.md).
 
-Foundation details: storage [docs/persistence.md](docs/persistence.md), job states
-[docs/lifecycle.md](docs/lifecycle.md), worker/supervisor
-[docs/execution.md](docs/execution.md), adapter boundaries
-[docs/adapters.md](docs/adapters.md), website/API shell
-[docs/application.md](docs/application.md).
+| Page | What it is for |
+| --- | --- |
+| Home | Recent runs, workspace summary, what needs attention |
+| Datasets | Generate a Foxtrot dataset, import a YOLO folder, or download a DVC version; name and preview them |
+| Train | One training run (model, start weights, CPU/GPU, early stopping, all settings) or a tuning study |
+| Runs | Progress, training output, results, MLflow links, resume and retry |
+| Evaluate | Score a checkpoint on labeled real images, or preview predictions on unlabeled ones |
+| Settings | Your name, MLflow destinations and experiment names, GPU check, setup check, storage |
 
-The original command-line pipeline below still works unchanged.
+## Documentation
 
-## Project files
+| Topic | Document |
+| --- | --- |
+| Using the website, API overview | [docs/application.md](docs/application.md) |
+| Training, models, settings, early stopping, GPU | [docs/training.md](docs/training.md) |
+| Generating datasets | [docs/generation.md](docs/generation.md) |
+| DVC versions and evaluation on real images | [docs/evaluation.md](docs/evaluation.md) |
+| Tuning studies | [docs/studies.md](docs/studies.md) |
+| Recovery and upload retries | [docs/recovery.md](docs/recovery.md) |
+| Installation, coverage, limits, release record | [docs/release.md](docs/release.md) |
+| Internals: storage, job states, worker, adapters | [docs/persistence.md](docs/persistence.md), [docs/lifecycle.md](docs/lifecycle.md), [docs/execution.md](docs/execution.md), [docs/adapters.md](docs/adapters.md) |
+| Plan and current status | [docs/project/implementation_plan.md](docs/project/implementation_plan.md), [docs/project/implementation_status.md](docs/project/implementation_status.md) |
+| Earlier research and roadmap (history) | [docs/history/](docs/history/) |
+
+## Project layout
 
 | Path | Purpose |
 | --- | --- |
-| `implementation_plan.md` | Current architecture and delivery steps: horizontal foundation, then vertical slices |
-| `research.md` | Architecture research; issues 3–7 were subsequently fixed |
-| `repository_verification.md` | Findings, implemented fixes, and recorded verification |
-| `project_roadmap.md` | Historical roadmap and original scope |
-| `params.yaml` | Current generation, split, and training configuration |
-| `src/data_generation/` | Active generator, helpers, and required resources |
-| `src/class_names.py` | Shared class IDs |
-| `src/split_dataset.py` | Current deterministic train/validation split |
-| `src/train.py` | Local YOLO training and existing MLflow integration |
-| `src/test.py` | Optional visual inference on real-flight images |
-| `tests/` | Generator/training-import regressions, configuration contracts, and local persistence checks |
-| `dvc.yaml`, `dvc.lock`, `.dvc/` | Existing DVC pipeline, recorded state, and configuration |
+| `src/foxtrot/api/` | Website server: API endpoints, launcher (`foxtrot` command), security, GPU check, built interface in `static/` |
+| `src/foxtrot/config/` | Checked settings and records: training settings, jobs, datasets, studies, results |
+| `src/foxtrot/persistence/` | The workspace: database, jobs, datasets, models, names, recovery, cleanup |
+| `src/foxtrot/execution/` | The worker that runs one job at a time in a supervised child process |
+| `src/foxtrot/pipeline/` | Generation, splitting, YOLO training and evaluation |
+| `src/foxtrot/studies/` | Tuning studies (Optuna) and dataset-recipe tuning |
+| `src/foxtrot/tracking/` | MLflow upload plans, the uploader and its client |
+| `frontend/` | Interface source (React + TypeScript); `npm run build` writes into `src/foxtrot/api/static/` |
+| `tests/` | Automated checks (temporary workspaces; no real training or uploads) |
+| `scripts/` | `verify_baseline.py` (all tests + protected-file check), `verify_frontend.mjs` |
+| `docs/` | Documentation (above) |
+| `src/data_generation/`, `src/train.py`, `src/split_dataset.py`, `src/test.py`, `src/class_names.py` | Original pipeline and generator (protected: the website runs the generator unchanged) |
+| `params.yaml`, `dvc.yaml`, `dvc.lock`, `.dvc/`, `data/` | Original DVC pipeline, its settings and data (protected) |
+| `pyproject.toml`, `requirements.txt`, `requirements-dev.in` | Package definition and locked dependencies |
 
-## Run the current pipeline
+## Checks
+
+```bash
+.venv/bin/python -B scripts/verify_baseline.py
+```
+
+Runs every test with temporary caches and confirms the protected files are unchanged.
+
+## Original command-line pipeline
 
 Use the verified Ubuntu/Python baseline described in the development guide.
 Activate its environment, then install the locked dependencies if needed:
@@ -86,7 +116,7 @@ Optional real-flight images belong in `data/test_real/images/`. The final script
 skips if none are present. Its predictions are visual examples; quantitative
 accuracy requires labeled evaluation data.
 
-## Current generation behavior
+### Generation behavior
 
 - `data_generation.n` means images per class.
 - `data_generation.size` is a positive integer and produces exactly
@@ -101,7 +131,7 @@ accuracy requires labeled evaluation data.
 - Class IDs are `0 = Hexagon` and `1 = Triangle`, defined in
   `src/class_names.py`. Changing class order changes existing label meanings.
 
-## Regression checks
+### Regression checks
 
 With the project dependencies installed, run:
 
@@ -115,4 +145,4 @@ or starting training. Training-import checks require genuine YOLO dependencies.
 The issue 3–7 corrections can change generated images and boxes. Existing datasets
 and checkpoints are not rewritten automatically. Compare results using the same
 code, inputs, configuration, and dependency versions. See
-[repository_verification.md](repository_verification.md) for recorded evidence.
+[docs/history/repository_verification.md](docs/history/repository_verification.md) for recorded evidence.

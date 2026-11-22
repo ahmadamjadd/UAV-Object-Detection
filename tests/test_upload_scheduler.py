@@ -78,7 +78,7 @@ class UploadSchedulerTests(unittest.TestCase):
         scheduler.start()
         self.addCleanup(scheduler.stop)
         self.wait_for(lambda: scheduler.delay == 1.0)
-        self.assertEqual(self.upload_state(job), "pending")
+        self.assertEqual(self.upload_state(job), "retrying")  # V7: still queued, now with its reason shown
         scheduler.trigger()
         self.assertEqual(scheduler.delay, 0.2)
 

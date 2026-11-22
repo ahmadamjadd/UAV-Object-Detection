@@ -11,6 +11,7 @@ from foxtrot.persistence.processes import (
 )
 
 
+# We cannot be sure a process is ours, so we must not stop it.
 class OwnershipUncertain(RuntimeError):
     pass
 

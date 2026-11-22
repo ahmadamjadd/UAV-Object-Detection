@@ -27,7 +27,9 @@ from foxtrot.persistence.jobs import (
 from foxtrot.persistence.workspace import initialize_workspace
 
 
+# Workspace storage survives restarts, competition and disk errors.
 class PersistenceTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(prefix="foxtrot-h3-")
         self.addCleanup(self.fixture.cleanup)
@@ -36,6 +38,7 @@ class PersistenceTests(unittest.TestCase):
         self.checkout.mkdir()
         self.workspace = self.root / "workspace"
 
+    # A minimal valid job request.
     def request(self, epochs=5):
         return {
             "dataset_id": "dataset-demo",
@@ -43,11 +46,13 @@ class PersistenceTests(unittest.TestCase):
             "training": {"epochs": epochs},
         }
 
+    # Record a job.
     def submit(self, key="first", epochs=5):
         return create_recorded_job(
             self.workspace, self.checkout, self.request(epochs), key,
         )
 
+    # Run one SQL statement in a transaction.
     def execute(self, statement, parameters=()):
         with connect_database(self.workspace, self.checkout) as connection:
             with connection:
@@ -89,6 +94,7 @@ class PersistenceTests(unittest.TestCase):
         self.submit("second")
         ready = Barrier(2)
 
+        # Claim the next job from a thread once all threads are ready.
         def claim():
             ready.wait(timeout=10)
             return claim_next_job(self.workspace, self.checkout)
@@ -158,6 +164,7 @@ class PersistenceTests(unittest.TestCase):
         self.assertEqual(get_job_record(self.workspace, self.checkout, directory.name).execution_state, "queued")
 
     def test_partial_preparation_is_not_queued_and_can_be_cleaned(self):
+        # Simulate a disk failure while writing the resolved settings.
         def interrupted_write(path, content):
             if path.name == "resolved.json":
                 raise OSError("fixture disk failure")
@@ -265,6 +272,7 @@ class PersistenceTests(unittest.TestCase):
         replacement.write_bytes(b"replacement")
         real_digest = hashlib.file_digest
 
+        # Swap the file while it is being hashed.
         def replace_during_hash(stream, algorithm):
             digest = real_digest(stream, algorithm)
             replacement.replace(path)

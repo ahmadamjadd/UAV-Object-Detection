@@ -33,6 +33,7 @@ class TrackingDestination(BaseModel):
     browser_url: str | None = Field(default=None, max_length=2048)
     experiment_name: str = Field(default="Foxtrot Detection", min_length=1, max_length=250)
 
+    # Refuse addresses with a user name/password inside them.
     @field_validator("tracking_uri", "browser_url")
     @classmethod
     def no_embedded_credentials(cls, value: str | None) -> str | None:
@@ -48,7 +49,9 @@ class DestinationUpdate(TrackingDestination):
     token: SecretStr | None = None
 
 
+# Reads and writes tracking destinations; secrets are kept in a private file.
 class SettingsStore:
+    # Open the workspace's settings folder.
     def __init__(self, workspace_root: str | Path, source_checkout: str | Path):
         root = initialize_workspace(workspace_root, source_checkout)
         self.directory = root / "settings"
@@ -56,6 +59,7 @@ class SettingsStore:
         self.secret_path = self.directory / "secrets.json"
         self._lock = threading.Lock()
 
+    # Read one settings JSON file safely (no links, empty if missing).
     def _read(self, path: Path) -> dict:
         if path.is_symlink():
             raise ValueError("Settings files must not be symbolic links")
@@ -87,6 +91,7 @@ class SettingsStore:
             for key, value in sorted(public.items())
         ]
 
+    # Save a destination's public fields and, separately, any new credentials.
     def save_destination(self, update: DestinationUpdate) -> dict:
         public_fields = TrackingDestination.model_fields.keys()
         with self._lock:
@@ -107,6 +112,7 @@ class SettingsStore:
         with self._lock:
             return dict(self._read(self.secret_path).get(destination_id) or {})
 
+    # All saved secret values, so they can be hidden from logs.
     def secret_values(self) -> list[str]:
         if not self.secret_path.exists():
             return []
@@ -121,10 +127,12 @@ class SettingsStore:
 class RedactingFilter(logging.Filter):
     """Replace known credential values in log messages, including uvicorn's."""
 
+    # Remember where the secrets are read from.
     def __init__(self, store: SettingsStore):
         super().__init__()
         self.store = store
 
+    # Replace any saved secret that appears in a log message with ***.
     def filter(self, record: logging.LogRecord) -> bool:
         secrets = [value for value in self.store.secret_values() if len(value) >= 4]
         if secrets:

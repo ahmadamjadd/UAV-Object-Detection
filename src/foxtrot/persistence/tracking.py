@@ -17,6 +17,7 @@ from .events import _append_event
 from .jobs import _required_row
 
 
+# One pending or done MLflow upload step of a job.
 @dataclass(frozen=True)
 class OutboxEntry:
     job_id: str
@@ -26,6 +27,7 @@ class OutboxEntry:
     acknowledged_at: str | None
 
 
+# Which MLflow run belongs to a job.
 @dataclass(frozen=True)
 class RunAssociation:
     job_id: str
@@ -34,11 +36,13 @@ class RunAssociation:
     run_url: str | None
 
 
+# Turn a database row into an OutboxEntry.
 def _entry(row) -> OutboxEntry:
     operation = TrackingOperation(operation=row["operation"], payload=json.loads(row["payload_json"]))
     return OutboxEntry(row["job_id"], row["position"], operation, row["attempts"], row["acknowledged_at"])
 
 
+# An upload plan must start by creating the run and end by closing it.
 def _check_plan(operations: Sequence[TrackingOperation]) -> None:
     kinds = [item.operation for item in operations]
     if not operations or not all(isinstance(item, TrackingOperation) for item in operations):
@@ -81,6 +85,7 @@ def enqueue_tracking(
             ).fetchall())
 
 
+# The upload steps of a job (optionally only those not done yet).
 def list_tracking(
     workspace_root: str | Path, source_checkout: str | Path, job_id: str, *, pending_only: bool = False,
 ) -> tuple[OutboxEntry, ...]:
@@ -151,6 +156,7 @@ def record_run_association(
     return association
 
 
+# The MLflow run linked to a job, if any.
 def get_run_association(
     workspace_root: str | Path, source_checkout: str | Path, job_id: str,
 ) -> RunAssociation | None:

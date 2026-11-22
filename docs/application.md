@@ -1,8 +1,8 @@
-# H7 local application shell
+# The local application (website, API and worker)
 
-One command starts the local website/API and the worker. The browser shows
-setup, a training form, and job progress. Training is still the H6 **fixture**
-adapter; real YOLO and MLflow arrive in V1.
+One command starts the local website/API and the worker. This document began with the
+H7 shell; each slice's additions are listed below in order, and the current pages are
+described under *Interface redesign*.
 
 ## Start it
 
@@ -115,9 +115,63 @@ A **Studies** screen and `/api/studies/...` endpoints; the launcher also starts 
 coordinator (one per workspace). Study trial jobs carry `study` in their specification. See
 [studies.md](studies.md).
 
+## Added in V7/V8
+
+A **Recovery** screen (`GET /api/recovery`) with resume / retry / new experiment /
+continue study; classified upload errors; "Training finished — upload pending" and an
+optional redirect after sync. Setup gains a system check (`GET /api/system/check`,
+`foxtrot --check`), the member name (`GET/PUT /api/profile`, `foxtrot.member` tag) and
+safe storage cleanup (`GET /api/storage`, `POST /api/storage/cleanup`). See
+[recovery.md](recovery.md) and [release.md](release.md).
+
 ## Limits
 
-- Progress uses 1-second polling with the event cursor; Server-Sent Events can come with V1.
-- Registering datasets, the real trainer, MLflow uploads from the UI, and the
-  history/datasets screens arrive with their slices (V1+).
-- Tracking destinations are stored but not yet used by an uploader (V1).
+- Progress uses short polling with the event cursor (no Server-Sent Events).
+- One job runs at a time per workspace; further jobs wait in the queue.
+
+## Interface redesign (21 November 2026)
+
+The browser interface follows the "foxtrot-ui-design" package (FoxBrain-style shell:
+near-black + fox orange, light/dark, sidebar collapsing to icons under 800 px). Six pages,
+hash-routed (`#/home`, `#/datasets?add=generate`, `#/train?mode=study`, `#/runs?job=<id>`,
+`#/runs?tab=attention`, `#/evaluate?tab=preview`, `#/settings`):
+
+| Page | Contains |
+| --- | --- |
+| Home | live training card (epoch, mAP50-95 so far, time left, sparkline), needs attention, recent results, setup status, quick actions, first-run steps |
+| Datasets | datasets with roles, image counts and warnings; "Add dataset": Generate synthetic (preview with label boxes) / Import a folder / From Git-DVC |
+| Train | Single run (schema-built settings, start-from, JSON editor, coverage) and Tuning study (list, new-study form with plan check, study detail, repeat) |
+| Runs | all runs with live detail (training and upload shown separately) and Needs attention (resume / retry / new experiment / continue study / holds) |
+| Evaluate | score on labeled images (validation preferred; test warned) and preview on unlabeled photos |
+| Settings | system check, GPU, tracking destinations (with experiment name), member name, pretrained weights, storage cleanup, about |
+
+Code: `frontend/src/App.tsx` (shell), `ui.tsx` (shared components, routing, polling),
+`live.ts` (live job events), `pages/*.tsx`. No new npm packages; fonts are the system
+font (or Inter if installed) because the security policy forbids downloaded web fonts.
+`GET /api/jobs` now also returns `kind`, `model_id`, `dataset_id`, `study`;
+`GET /api/datasets` returns `images` (per split) and `warning_count`.
+
+### Names and training output (21 November 2026)
+
+- **Names**: datasets and runs can carry a member-chosen name (`settings/labels.json`),
+  set when importing/generating a dataset or starting a run, and renamed any time
+  (`PUT /api/datasets/{id}/name`, `PUT /api/jobs/{id}/name`, optional `name` in
+  `POST /api/jobs` and `POST /api/datasets`). IDs and fingerprints remain the identity.
+  Lists return `name`; a run's name becomes its MLflow run name (`foxtrot.name` tag) and
+  its dataset's name is logged as `dataset.name`. Study trials are named
+  "<study> · trial N"; evaluations "Evaluation of <model> on <dataset>".
+- **Training output**: Runs shows the selected run's output in a large terminal panel under
+  the table (colour/cursor codes removed, progress-bar redraws collapsed, epoch summaries
+  highlighted, follows new lines unless scrolled up).
+
+### Early stopping, GPU and experiment names (21 November 2026)
+
+- Train: *Run on* (CPU or a detected GPU, the GPU chosen by default when present) and an
+  *Early stopping* group (switch + patience). Details in [training.md](training.md#early-stopping-gpu-and-experiment-names).
+- `GET /api/system/gpu?refresh=true|false`: detected GPUs (`id`, `name`, `memory_gb`) or the
+  reason there is none; `GET /api/capabilities` lists the same devices; the setup check
+  shows it as an informational line. Submissions and studies asking for an absent GPU get 422.
+- MLflow experiment = the member name (22 November 2026): each job uploads into the experiment
+  named after the member recorded when it finished; a destination's experiment name is only the
+  fallback when no member name is set; Test connection names the experiment. The Train page shows
+  "Uploaded into the MLflow experiment “X” as run “name”".

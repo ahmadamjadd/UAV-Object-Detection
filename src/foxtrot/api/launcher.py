@@ -44,6 +44,7 @@ def worker_stop_seconds(limits: SupervisorLimits = SupervisorLimits()) -> float:
     return limits.grace_seconds + limits.terminate_seconds + limits.kill_seconds + 10
 
 
+# Start the separate worker process that runs the queued jobs.
 def start_worker(arguments) -> subprocess.Popen:
     command = [sys.executable, "-B", "-m", "foxtrot.execution.worker",
                "--workspace", str(arguments.workspace), "--source-checkout", str(arguments.source_checkout)]
@@ -56,6 +57,7 @@ def start_worker(arguments) -> subprocess.Popen:
     return subprocess.Popen(command, stdin=subprocess.DEVNULL, start_new_session=True)
 
 
+# Stop the worker politely, forcing it only if it does not finish in time.
 def stop_worker(worker: subprocess.Popen) -> int | None:
     if worker.poll() is None:
         worker.send_signal(signal.SIGTERM)
@@ -67,6 +69,7 @@ def stop_worker(worker: subprocess.Popen) -> int | None:
     return worker.returncode
 
 
+# The `foxtrot` command: start the website and worker, open the browser, stop both on Ctrl+C.
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--workspace", required=True, type=Path)
@@ -80,6 +83,7 @@ def main(argv=None) -> int:
                              "'pretrained'/'scratch' force one mode for every job")
     parser.add_argument("--no-browser", action="store_true", help="Do not open a browser tab")
     parser.add_argument("--no-worker", action="store_true", help="Serve the website/API only")
+    parser.add_argument("--check", action="store_true", help="Check the installation and workspace, then exit")
     parser.add_argument("--runtime-directory", type=Path, help=argparse.SUPPRESS)  # isolated tests only
     arguments = parser.parse_args(argv)
     if not 1024 <= arguments.port <= 65535:
@@ -87,6 +91,13 @@ def main(argv=None) -> int:
 
     # Initialize storage before the API and worker can race to create it.
     initialize_database(arguments.workspace, arguments.source_checkout)
+    if arguments.check:  # V8: setup check without starting anything
+        from .app import STATIC_DIRECTORY
+        from .system import system_check
+        report = system_check(arguments.workspace, arguments.source_checkout, STATIC_DIRECTORY)
+        for check in report["checks"]:
+            print(f"{'OK ' if check['ok'] else 'NO '} {check['name']}: {check['detail']}")
+        return 0 if report["ok"] else 1
     app = create_app(arguments.workspace, arguments.source_checkout, port=arguments.port,
                      session_token=new_session_token(), pipeline_adapter=arguments.pipeline_adapter)
     redactor = RedactingFilter(app.state.settings)
@@ -98,6 +109,7 @@ def main(argv=None) -> int:
                                            access_log=False, lifespan="off"))
     url = f"http://{HOST}:{arguments.port}/"
 
+    # Print the address once the server is listening (and open the browser).
     def announce():
         while not server.started and not server.should_exit:
             time.sleep(0.05)

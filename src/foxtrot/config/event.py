@@ -34,6 +34,7 @@ class ProgressEvent(BaseModel):
     event_type: Literal["state_changed", "progress", "log", "error"]
     payload: dict[str, JsonValue]
 
+    # Event data must be plain JSON with finite numbers.
     @field_validator("payload")
     @classmethod
     def check_payload(

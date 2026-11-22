@@ -10,7 +10,9 @@ from foxtrot.persistence.jobs import create_job_directory
 from foxtrot.persistence.workspace import initialize_workspace
 
 
+# Job folders are created inside the workspace only.
 class JobDirectoryTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-job-directory-"

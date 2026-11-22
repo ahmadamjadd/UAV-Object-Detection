@@ -21,11 +21,14 @@ from foxtrot.tracking.plan import JOB_TAG
 from foxtrot.tracking.uploader import sync_job_tracking
 
 
+# One upload operation.
 def op(kind, **payload):
     return TrackingOperation(operation=kind, payload=payload)
 
 
+# Upload steps are stored in order and resumed after failures.
 class TrackingOutboxTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h6-tracking-")
         self.addCleanup(temporary.cleanup)
@@ -34,6 +37,7 @@ class TrackingOutboxTests(unittest.TestCase):
         self.checkout.mkdir()
         self.workspace = self.root / "workspace"
 
+    # A recorded job that has finished.
     def finished_job(self):
         job = create_recorded_job(self.workspace, self.checkout,
                                   {"dataset_id": "shapes", "tracking_destination_id": "team"}, "key").name
@@ -44,6 +48,7 @@ class TrackingOutboxTests(unittest.TestCase):
         record_job_artifact(self.workspace, self.checkout, job, "job-result", "result.json")
         return job, claim.directory
 
+    # A small valid upload plan for the job.
     def plan(self, job):
         return [
             op("create_run", run_name="foxtrot-run", tags={JOB_TAG: job}),
@@ -117,7 +122,7 @@ class TrackingOutboxTests(unittest.TestCase):
         client = RecordingTrackingClient(fail_once={"log_metrics"})
         record = sync_job_tracking(self.workspace, self.checkout, job, client)
         self.assertEqual((record.execution_state, record.tracking_state), ("finished", "retrying"))
-        self.assertEqual(record.tracking_error.code, "tracking_upload_failed")
+        self.assertEqual(record.tracking_error.code, "tracking_unreachable")  # V7: a connection outage is named as such
         self.assertNotIn("outage", record.tracking_error.message)  # exception text is not saved
         pending = list_tracking(self.workspace, self.checkout, job, pending_only=True)
         self.assertEqual([e.operation.operation for e in pending][0], "log_metrics")

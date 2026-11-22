@@ -41,7 +41,9 @@ class JobSpec(BaseModel):
 
     # How the model's weights start (V3): official pretrained weights, random weights,
     # or the best checkpoint of an earlier finished job in this workspace (same model).
-    initialization: Literal["pretrained", "scratch", "checkpoint"] = "pretrained"
+    # V7 "resume": continue an interrupted/failed/cancelled job from its last.pt, with the
+    # same settings (only workers, cache and patience may change); a new job, new folder.
+    initialization: Literal["pretrained", "scratch", "checkpoint", "resume"] = "pretrained"
     checkpoint_job_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
 
     tracking_destination_id: str = Field(
@@ -57,10 +59,11 @@ class JobSpec(BaseModel):
     # A checkpoint job is needed exactly when starting from a checkpoint.
     @model_validator(mode="after")
     def checkpoint_matches_initialization(self) -> Self:
-        if self.initialization == "checkpoint" and self.checkpoint_job_id is None:
-            raise ValueError("Choose the earlier job whose checkpoint to start from")
-        if self.initialization != "checkpoint" and self.checkpoint_job_id is not None:
-            raise ValueError("checkpoint_job_id is only used when initialization is 'checkpoint'")
+        uses_job = self.initialization in ("checkpoint", "resume")
+        if uses_job and self.checkpoint_job_id is None:
+            raise ValueError("Choose the earlier job to start from")
+        if not uses_job and self.checkpoint_job_id is not None:
+            raise ValueError("checkpoint_job_id is only used when starting from or resuming an earlier job")
         if self.kind == "evaluate" and self.initialization != "checkpoint":
             raise ValueError("An evaluation scores an earlier job's checkpoint: use initialization 'checkpoint'")
         return self

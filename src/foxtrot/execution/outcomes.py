@@ -95,6 +95,10 @@ def record_pipeline_outcome(
         names.discard("checkpoint")  # already uploaded with the job that trained it
     # A generated (V2) or DVC (V4) dataset's provenance travels with the job to MLflow.
     provenance = load_generation_provenance(request.dataset) or load_dvc_provenance(request.dataset)
+    from foxtrot.persistence.profile import read_profile
+    member = read_profile(workspace, checkout)["member"]  # V8: who trained it, for shared MLflow
+    from foxtrot.persistence.labels import read_labels
+    labels = read_labels(workspace, checkout)  # the member's names for this run and its dataset
     if provenance is not None:
         write_new_text(claim.directory / "dataset-provenance.json", json.dumps(provenance, indent=2))
         sync_directory(claim.directory)
@@ -106,7 +110,8 @@ def record_pipeline_outcome(
         dataset=request.dataset, pipeline=pipeline,
         artifact_names=names | {"job-result", "summary"},
         epoch_progress=_epoch_progress(workspace, checkout, claim.job_id),
-        dataset_provenance=provenance, plot_artifacts=sorted(plots),
+        dataset_provenance=provenance, plot_artifacts=sorted(plots), member=member,
+        run_name=labels["jobs"].get(claim.job_id), dataset_name=labels["datasets"].get(request.dataset.metadata.dataset_id),
     )
     enqueue_tracking(workspace, checkout, claim.job_id, plan)
     return result

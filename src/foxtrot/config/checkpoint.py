@@ -18,6 +18,7 @@ class CheckpointReference(BaseModel):
     relative_path: str
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
+    # A checkpoint path must stay inside its job folder.
     @field_validator("relative_path")
     @classmethod
     def check_relative_path(cls, value: str) -> str:

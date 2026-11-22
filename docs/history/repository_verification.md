@@ -46,7 +46,7 @@ eb7ea13f9ae9712324850a4b319f6c20cb6fa0c3757ec2c246a23a8777c90404
 
 ### Cause and practical impact
 
-The seed repeats random indices, but the same index refers to a different file if the file list changes order. Background choices at [DataSetGeneration.py:531](src/data_generation/DataSetGeneration.py#L531) use unsorted `os.listdir()`. Seeding at line 303 does not impose file ordering.
+The seed repeats random indices, but the same index refers to a different file if the file list changes order. Background choices at [DataSetGeneration.py:531](../../src/data_generation/DataSetGeneration.py#L531) use unsorted `os.listdir()`. Seeding at line 303 does not impose file ordering.
 
 **In easy terms:** running the small experiment twice worked consistently. Rebuilding the folder or using another computer could change which backgrounds are chosen, even with identical files and settings. The test deliberately changed enumeration to prove this dependency; it did not demonstrate spontaneous reordering in your current checkout.
 

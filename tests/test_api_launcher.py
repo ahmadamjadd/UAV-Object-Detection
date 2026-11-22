@@ -18,6 +18,7 @@ from foxtrot.execution.locking import worker_lock
 from test_pipeline_contracts import make_dataset
 
 
+# A free local port for a test server.
 def free_port() -> int:
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -35,7 +36,9 @@ def network_address() -> str | None:
     return None if address.startswith("127.") else address
 
 
+# Starting and stopping the real foxtrot command.
 class LauncherTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h7-launch-")
         self.addCleanup(temporary.cleanup)
@@ -47,6 +50,7 @@ class LauncherTests(unittest.TestCase):
         self.port = free_port()
         self.base = f"http://127.0.0.1:{self.port}"
 
+    # Start the foxtrot command in the background.
     def launch(self, *extra):
         process = subprocess.Popen(
             [sys.executable, "-B", "-m", "foxtrot.api.launcher", "--workspace", str(self.workspace),
@@ -57,6 +61,7 @@ class LauncherTests(unittest.TestCase):
         self.addCleanup(self._stop, process)
         return process
 
+    # Make sure a started process is gone after the test.
     def _stop(self, process):
         if process.poll() is None:
             process.kill()
@@ -64,6 +69,7 @@ class LauncherTests(unittest.TestCase):
         process.stdout.close()
         process.stderr.close()
 
+    # Send an HTTP request to the running server.
     def request(self, method, path, body=None, session=None):
         headers = {"Content-Type": "application/json"} if body is not None else {}
         if session:
@@ -74,6 +80,7 @@ class LauncherTests(unittest.TestCase):
             content = response.read()
             return json.loads(content) if response.headers.get_content_type() == "application/json" else content
 
+    # Wait until a condition holds, or fail after a timeout.
     def wait_for(self, predicate, timeout=30):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:

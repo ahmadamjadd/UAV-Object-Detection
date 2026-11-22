@@ -76,6 +76,7 @@ def epoch_metric_points(progress) -> list[dict]:
     return points
 
 
+# Turn nested settings into flat "group.key" entries for MLflow.
 def _flatten(prefix: str, value, into: dict[str, str]) -> None:
     if isinstance(value, dict):
         for key, item in value.items():
@@ -84,10 +85,12 @@ def _flatten(prefix: str, value, into: dict[str, str]) -> None:
         into[prefix] = str(value)
 
 
+# Build the ordered list of MLflow upload steps for a finished job.
 def build_tracking_plan(
     *, result: JobResult, resolved: JobSpec, resolved_sha256: str, adapter: str, fixture: bool,
     dataset: DatasetInput, pipeline: PipelineResult | None, artifact_names: set[str],
-    epoch_progress=(), dataset_provenance: dict | None = None, plot_artifacts=(),
+    epoch_progress=(), dataset_provenance: dict | None = None, plot_artifacts=(), member: str | None = None,
+    run_name: str | None = None, dataset_name: str | None = None,
 ) -> list[TrackingOperation]:
     job_id = result.job_id
     params: dict[str, str] = {}
@@ -102,6 +105,11 @@ def build_tracking_plan(
         params["evaluation.config"] = EVALUATION_CONFIG_NAME
         params.update({f"evaluation.{key}": str(value) for key, value in EVALUATION_CONFIG.items()})
     params.update(generation_params(dataset_provenance))
+    if dataset_name:
+        params["dataset.name"] = dataset_name
+    # Different for every run, so each line can be told apart in MLflow comparison charts.
+    params["run.name"] = run_name or f"foxtrot-{job_id[:8]}"
+    params["run.short_id"] = job_id[:8]
     # V3: the model's actual starting weights, traceable to the reported results.
     if pipeline is not None and pipeline.training.initialization is not None:
         params["model.initialization"] = pipeline.training.initialization
@@ -109,8 +117,12 @@ def build_tracking_plan(
             params["model.start_weights_sha256"] = pipeline.training.start_weights_sha256
     operations = [
         TrackingOperation(operation="create_run", payload={
-            "run_name": f"foxtrot-{job_id[:8]}",
+            "run_name": run_name or f"foxtrot-{job_id[:8]}",  # the member's name for the run, if any
             "tags": {JOB_TAG: job_id, "foxtrot.adapter": adapter, "foxtrot.kind": resolved.kind,
+                     **({"foxtrot.member": member} if member else {}),
+                     **({"foxtrot.name": run_name} if run_name else {}),
+                     **({"foxtrot.stopped_early": "true"} if pipeline is not None and resolved.kind == "train"
+                        and 0 < pipeline.training.epochs_completed < resolved.training.epochs else {}),
                      **({"foxtrot.study_id": resolved.study.study_id,
                          "foxtrot.trial_number": str(resolved.study.trial_number)} if resolved.study else {}),
                      "foxtrot.fixture": str(fixture).lower(), "foxtrot.outcome": result.outcome},

@@ -25,7 +25,9 @@ from foxtrot.tracking.uploader import sync_job_tracking
 from test_pipeline_contracts import make_dataset
 
 
+# The worker runs jobs through the pipeline and plans their uploads.
 class PipelineWorkerTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h6-worker-")
         self.addCleanup(temporary.cleanup)
@@ -34,19 +36,23 @@ class PipelineWorkerTests(unittest.TestCase):
         self.checkout.mkdir()
         self.workspace = self.root / "workspace"
 
+    # Record a training job.
     def submit(self, dataset_id="shapes", epochs=4, key="one"):
         return create_recorded_job(self.workspace, self.checkout, {
             "dataset_id": dataset_id, "tracking_destination_id": "team", "training": {"epochs": epochs},
         }, key).name
 
+    # A worker using the fake pipeline.
     def worker(self, **settings):
         settings = {"adapter": "fixture", "fixture_epoch_seconds": 0.0, **settings}
         return Worker(self.workspace, self.checkout, pipeline=PipelineSettings(**settings),
                       runtime_directory=self.root / "runtime")
 
+    # The job's current stored record.
     def record(self, job):
         return get_job_record(self.workspace, self.checkout, job)
 
+    # The job's planned upload steps.
     def operations(self, job):
         return [entry.operation for entry in list_tracking(self.workspace, self.checkout, job)]
 

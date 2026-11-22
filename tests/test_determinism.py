@@ -13,6 +13,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 
 
+# Generate a small dataset in a separate process and return its file hashes.
 def generate_fixture(fixture, reverse, preseed):
     import contextlib
     import io
@@ -79,6 +80,7 @@ def generate_fixture(fixture, reverse, preseed):
                       "enumerated_background_order": enumerated_background_order}))
 
 
+# The same seed always produces the same dataset.
 class DeterminismTests(unittest.TestCase):
     def test_identical_seed_ignores_directory_order_and_preimport_random_state(self):
         with tempfile.TemporaryDirectory(prefix="foxtrot-determinism-") as temporary:

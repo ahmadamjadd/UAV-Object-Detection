@@ -34,6 +34,7 @@ class JobResult(BaseModel):
     )
     mlflow_run_id: str | None = Field(default=None, pattern=r"^\S+$")
 
+    # A finished job must have a checkpoint and evaluation; other outcomes must explain why.
     @model_validator(mode="after")
     def check_consistency(self) -> Self:
         if self.outcome == "finished":

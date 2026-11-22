@@ -37,6 +37,7 @@ BACKGROUND_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
 # Raised when the original generator code cannot be found next to this package.
 class GeneratorUnavailable(PipelineFailure):
+    # The generator code could not be found or loaded.
     def __init__(self, message: str):
         super().__init__("generator_unavailable", message)
 
@@ -138,6 +139,7 @@ def ensure_letters(module, cache_root: Path, size: int) -> Path:
 
 # Stand-in for the generator's "os": identical, except clearing the terminal does nothing.
 class _QuietOs:
+    # Everything else behaves like the real os module.
     def __getattr__(self, name):
         return getattr(os, name)
 
@@ -149,9 +151,11 @@ class _QuietOs:
 
 # Stand-in for the generator's "cv2": identical, but tells us about every image it saves.
 class _WatchedCv2:
+    # Wrap OpenCV so every saved image is reported.
     def __init__(self, cv2_module, on_image):
         self._cv2, self._on_image = cv2_module, on_image
 
+    # Everything else behaves like the real OpenCV module.
     def __getattr__(self, name):
         return getattr(self._cv2, name)
 

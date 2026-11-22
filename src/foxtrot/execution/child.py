@@ -55,15 +55,19 @@ def load_request(path: Path) -> ExecutionRequest | PipelineExecutionRequest:
 class _Reporter:
     """Adapter progress becomes pipe messages; the parent saves them."""
 
+    # Reporter given to the pipeline: sends events and knows about cancellation.
     def __init__(self, emit, cancelled: threading.Event):
         self.emit, self.cancelled = emit, cancelled
 
+    # Send a progress update (e.g. epoch finished) to the supervisor.
     def progress(self, payload: dict) -> None:
         self.emit(Update(event_type="progress", payload=payload))
 
+    # Send a line of training output to the supervisor.
     def log(self, payload: dict) -> None:
         self.emit(Update(event_type="log", payload=payload))
 
+    # True once cancellation was requested (optionally waiting a while for it).
     def wait_cancelled(self, seconds: float = 0.0) -> bool:
         return self.cancelled.wait(seconds) if seconds > 0 else self.cancelled.is_set()
 
@@ -113,6 +117,7 @@ def run_pipeline(request: PipelineExecutionRequest, emit, cancelled: threading.E
         evaluation = adapters.evaluator.evaluate(EvaluationInput(
             job_id=request.job_id, checkpoint=training.checkpoint,
             job_directory=str(directory), dataset=request.dataset, plots=evaluating_only,
+            device=request.resolved.training.device,
         ), reporter)
         plots = tuple(sorted(path.relative_to(directory).as_posix()
                              for path in (output / "evaluation").glob("*.png"))) if evaluating_only else ()
@@ -190,6 +195,7 @@ while True:
             child.wait(timeout=2)
 
 
+# Entry point of the child process: read the request, run the job, report events.
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--request", required=True, type=Path)
@@ -198,6 +204,7 @@ def main() -> int:
     request = load_request(arguments.request)
     cancelled = threading.Event()
     with os.fdopen(arguments.events_fd, "w", encoding="utf-8", buffering=1) as events:
+        # Write one event message to the supervisor's channel.
         def emit(message):
             events.write(message.model_dump_json() + "\n")
             events.flush()
@@ -209,6 +216,7 @@ def main() -> int:
         # Only the H5 fixture can be told to ignore cancel; pipeline requests have no fixture.
         ignore_cancel = request.fixture is not None and request.fixture.ignore_cancel
 
+        # Listen for a cancel command from the supervisor.
         def commands():
             for line in sys.stdin:
                 if line == '{"command":"cancel"}\n' and not ignore_cancel:

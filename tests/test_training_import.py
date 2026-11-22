@@ -13,6 +13,7 @@ import unittest
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+# The training code imports without the generator files.
 class TrainingImportTests(unittest.TestCase):
     def test_package_and_direct_script_without_generator_resources(self):
         with tempfile.TemporaryDirectory(prefix="foxtrot-training-import-") as directory:

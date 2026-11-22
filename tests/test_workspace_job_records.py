@@ -18,7 +18,9 @@ from threading import Barrier
 from foxtrot.persistence.database import initialize_database
 
 
+# Recorded jobs: repeat-safe submission and claiming.
 class RecordedJobTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-recorded-job-"
@@ -31,6 +33,7 @@ class RecordedJobTests(unittest.TestCase):
 
         self.workspace = self.root / "workspace"
 
+    # A minimal valid job request.
     def request(self):
         return {
             "dataset_id": "dataset-demo",
@@ -272,6 +275,7 @@ class RecordedJobTests(unittest.TestCase):
         initialize_database(self.workspace, self.checkout)
         ready = Barrier(2)
 
+        # Submit the same job from a thread once all threads are ready.
         def submit():
             ready.wait(timeout=10)
             return create_recorded_job(

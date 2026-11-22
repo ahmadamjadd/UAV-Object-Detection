@@ -22,7 +22,9 @@ from foxtrot.persistence.lifecycle import transition_execution, transition_track
 from foxtrot.persistence.workspace import initialize_workspace
 
 
+# Job states and events are stored safely.
 class LifecyclePersistenceTests(unittest.TestCase):
+    # Before each test: a workspace with one claimed job.
     def setUp(self):
         fixture = tempfile.TemporaryDirectory(prefix="foxtrot-h4-events-")
         self.addCleanup(fixture.cleanup)
@@ -35,19 +37,24 @@ class LifecyclePersistenceTests(unittest.TestCase):
         self.claim = claim_next_job(self.workspace, self.checkout)
         self.reason = ErrorDetails(code="fixture_failed", message="Fixture operation failed")
 
+    # The job's current stored record.
     def record(self):
         return get_job_record(self.workspace, self.checkout, self.job)
 
+    # The job's stored events.
     def events(self, **options):
         return read_job_events(self.workspace, self.checkout, self.job, **options)
 
+    # Move the job to another state.
     def move(self, target, **options):
         return transition_execution(self.workspace, self.checkout, self.job, target,
                                     claim_token=self.claim.claim_token, **options)
 
+    # Move the job's upload to another state.
     def track(self, target, **options):
         return transition_tracking(self.workspace, self.checkout, self.job, target, **options)
 
+    # Store one progress event for the job.
     def append(self, payload=None, **options):
         return append_job_event(self.workspace, self.checkout, self.job, "progress",
                                 {"epoch": 1} if payload is None else payload,
@@ -249,6 +256,7 @@ print(json.dumps({'state': record.execution_state, 'cursor': record.last_event_s
         self.assertEqual(saved["events"][-1]["payload"], {"epoch": 2, "loss": 0.25})
 
 
+# Database upgrades that fail leave the old version intact.
 class EventMigrationTests(unittest.TestCase):
     def test_failed_version_four_migration_preserves_version_three_schema(self):
         with tempfile.TemporaryDirectory(prefix="foxtrot-h4-rollback-") as temporary:

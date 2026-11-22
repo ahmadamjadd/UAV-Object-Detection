@@ -11,7 +11,9 @@ from foxtrot.persistence.workspace import (
 )
 
 
+# A new workspace gets its folders and marker.
 class WorkspaceInitializationTests(unittest.TestCase):
+    # Before each test: an empty temporary folder.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-workspace-init-"

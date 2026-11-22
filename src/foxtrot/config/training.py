@@ -19,7 +19,7 @@ OPTIMIZERS = ("auto", "SGD", "Adam", "AdamW", "NAdam", "RAdam", "RMSprop", "Adam
 # Ultralytics' values when a named optimizer is used and nothing else is given.
 OPTIMIZER_DEFAULTS = {"lr0": 0.01, "momentum": 0.937, "warmup_bias_lr": 0.1}
 GROUPS = {
-    "training": "Training", "optimizer": "Optimizer and learning rate", "loss": "Loss weights",
+    "training": "Training", "early_stopping": "Early stopping", "optimizer": "Optimizer and learning rate", "loss": "Loss weights",
     "augmentation": "Augmentation", "runtime": "Runtime",
 }
 
@@ -40,8 +40,12 @@ class TrainingSettings(BaseModel):
     image_size: int = setting(640, "training", "Training/evaluation image size in pixels (multiple of 32)",
                               "imgsz", ge=32, le=4096, multiple_of=32)
     seed: int = setting(42, "training", "Random seed for repeatable training", "seed", ge=0, le=4_294_967_295)
-    patience: int = setting(100, "training", "Stop early after this many epochs without improvement",
-                            "patience", ge=1, le=10_000)
+    # Early stopping: after each epoch YOLO scores the validation images (mAP50-95); when that score
+    # has not improved for `patience` epochs, training stops and the best checkpoint so far is kept.
+    early_stopping: bool = setting(True, "early_stopping",
+                                   "Stop when the validation score (mAP50-95) stops improving; the best checkpoint is kept")
+    patience: int = setting(100, "early_stopping", "Epochs without improvement before stopping "
+                            "(if this is ≥ epochs, it never triggers)", "patience", ge=1, le=10_000)
     fraction: float = setting(1.0, "training", "Share of the training images to use (1 = all)",
                               "fraction", gt=0, le=1)
     freeze: int = setting(0, "training", "Freeze this many first model layers (0 = train all)",
@@ -91,7 +95,9 @@ class TrainingSettings(BaseModel):
                             "cutmix", ge=0, le=1)
 
     # Runtime
-    device: Literal["cpu"] = setting("cpu", "runtime", "Where training runs (GPU not yet verified)", "device")
+    device: str = setting("cpu", "runtime", "Where training runs: the CPU or a detected GPU (cuda:0, cuda:1, …)",
+                          "device", pattern=r"^(cpu|cuda:[0-9]{1,2})$")
+    amp: bool = setting(True, "runtime", "Mixed precision on GPU: faster and uses less memory (ignored on CPU)", "amp")
     workers: int = setting(2, "runtime", "Data-loading worker processes", "workers", ge=0, le=16)
     cache: Literal["none", "ram"] = setting(
         "none", "runtime", "Keep decoded training images in memory ('ram') for speed", "cache")
@@ -128,4 +134,5 @@ def ultralytics_arguments(settings: TrainingSettings) -> dict:
         arguments[key] = value
     arguments["cache"] = "ram" if settings.cache == "ram" else False
     arguments["freeze"] = settings.freeze or None
+    arguments["patience"] = settings.patience if settings.early_stopping else 0  # 0 = never stop early
     return arguments

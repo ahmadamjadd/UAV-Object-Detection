@@ -38,6 +38,7 @@ from .protocol import (
 )
 
 
+# Time limits for starting, polling and stopping a child process.
 @dataclass(frozen=True)
 class SupervisorLimits:
     poll_seconds: float = 0.05
@@ -46,12 +47,15 @@ class SupervisorLimits:
     terminate_seconds: float = 1.0
     kill_seconds: float = 2.0
 
+    # All limits must be positive numbers.
     def __post_init__(self):
         if any(not math.isfinite(value) or value <= 0 for value in self.__dict__.values()):
             raise ValueError("Supervisor time limits must be positive and finite")
 
 
+# Runs one claimed job in a child process and records everything it reports.
 class Supervisor:
+    # Remember the workspace, what to run and the stop signal.
     def __init__(self, workspace: Path, checkout: Path, runner: FixtureSettings | PipelineSettings,
                  stop: threading.Event, limits: SupervisorLimits):
         if not isinstance(runner, (FixtureSettings, PipelineSettings)):
@@ -59,13 +63,16 @@ class Supervisor:
         self.workspace, self.checkout = workspace, checkout
         self.runner, self.stop, self.limits = runner, stop, limits
 
+    # The job's current stored record.
     def record(self, claim):
         return get_job_record(self.workspace, self.checkout, claim.job_id)
 
+    # Store one event for the claimed job.
     def update(self, claim, event_type, payload):
         return append_job_event(self.workspace, self.checkout, claim.job_id, event_type, payload,
                                 claim_token=claim.claim_token)
 
+    # Move the claimed job to its next state.
     def phase(self, claim, target, **options):
         return transition_execution(self.workspace, self.checkout, claim.job_id, target,
                                     claim_token=claim.claim_token, **options)

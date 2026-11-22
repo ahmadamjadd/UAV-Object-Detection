@@ -27,13 +27,16 @@ def config_score(request: TrainingInput) -> float:
     return round(0.1 + 0.8 * int(hashlib.sha256(text.encode()).hexdigest()[:8], 16) / 0xFFFFFFFF, 6)
 
 
+# Fake trainer for tests: writes a small checkpoint instead of training.
 class FixtureTrainer:
+    # Delay per fake epoch, optional planned failure, optional scores from settings.
     def __init__(self, *, epoch_seconds: float = 0.05, fail_at_epoch: int | None = None,
                  config_scores: bool = False):
         self.config_scores = config_scores
         self.epoch_seconds = epoch_seconds
         self.fail_at_epoch = fail_at_epoch
 
+    # Pretend to train: report each epoch, then write the checkpoint.
     def train(self, request: TrainingInput, reporter: ProgressReporter) -> TrainingResult:
         epochs = request.resolved.training.epochs
         if not Path(request.data_yaml).is_file():
@@ -71,7 +74,9 @@ class FixtureTrainer:
         )
 
 
+# Fake evaluator for tests: returns fixed scores for the checkpoint.
 class FixtureEvaluator:
+    # Check the checkpoint exists and return fixed scores.
     def evaluate(self, request: EvaluationInput, reporter: ProgressReporter) -> EvaluationResult:
         if reporter.wait_cancelled(0):
             raise PipelineCancelled()

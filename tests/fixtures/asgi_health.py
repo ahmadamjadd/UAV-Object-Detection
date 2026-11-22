@@ -14,19 +14,23 @@ workspace, checkout, job_id = sys.argv[1:]
 app = FastAPI()
 
 
+# Tiny health endpoint that reads the job state from the database.
 @app.get("/health")
 async def health():
     return {"status": "ok", "execution_state": get_job_record(workspace, checkout, job_id).execution_state}
 
 
+# Call the endpoint ten times and report how long each answer took.
 async def main():
     started = time.monotonic()
     for _ in range(10):
         messages = []
 
+        # Deliver an empty request body.
         async def receive():
             return {"type": "http.request", "body": b"", "more_body": False}
 
+        # Collect the response messages.
         async def send(message):
             messages.append(message)
 

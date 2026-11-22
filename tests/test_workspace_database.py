@@ -13,7 +13,9 @@ from foxtrot.persistence.database import (
 from foxtrot.persistence.workspace import initialize_workspace
 
 
+# Creating and upgrading the workspace database.
 class DatabaseInitializationTests(unittest.TestCase):
+    # Before each test: an empty temporary folder.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-database-"

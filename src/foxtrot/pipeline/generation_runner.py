@@ -55,6 +55,7 @@ def write_status(run: Path, status: dict) -> None:
 
 # Progress reporter that keeps status.json current and watches for the cancel file.
 class _StatusReporter:
+    # The run folder and its status, saved as progress is reported.
     def __init__(self, run: Path, status: dict):
         self.run, self.status = run, status
 

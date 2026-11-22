@@ -33,6 +33,7 @@ def call(app, method, path, *, body=None, headers=None, host="127.0.0.1:8765"):
              "client": ("127.0.0.1", 50000), "server": ("127.0.0.1", PORT)}
     delivered = False
 
+    # Deliver the request body once.
     async def receive():
         nonlocal delivered
         if not delivered:
@@ -40,6 +41,7 @@ def call(app, method, path, *, body=None, headers=None, host="127.0.0.1:8765"):
             return {"type": "http.request", "body": raw, "more_body": False}
         await asyncio.sleep(3600)
 
+    # Collect the response messages.
     async def send(message):
         sent.append(message)
 
@@ -50,11 +52,14 @@ def call(app, method, path, *, body=None, headers=None, host="127.0.0.1:8765"):
     return start["status"], content, response_headers
 
 
+# Headers of a request from this website's own page (origin plus session token).
 def guarded(extra=None):
     return {"origin": ORIGIN, "x-foxtrot-session": TOKEN, **(extra or {})}
 
 
+# Website API rules: security checks, jobs, datasets, destinations.
 class ApiTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h7-api-")
         self.addCleanup(temporary.cleanup)
@@ -65,10 +70,12 @@ class ApiTests(unittest.TestCase):
         self.app = create_app(self.workspace, self.checkout, port=PORT, session_token=TOKEN,
                               pipeline_adapter="fixture", static_directory=None)
 
+    # Call the API and decode the JSON answer.
     def json(self, method, path, **options):
         status, content, _ = call(self.app, method, path, **options)
         return status, json.loads(content)
 
+    # A job submission body with optional training settings.
     def submission(self, key="key-000001", **training):
         return {"submission_key": key, "request": {
             "dataset_id": "shapes", "tracking_destination_id": "local", "training": training}}

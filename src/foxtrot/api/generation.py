@@ -29,6 +29,7 @@ class GenerationBusy(RuntimeError):
 
 # Keeps track of generation runs and the one process currently running.
 class GenerationRuns:
+    # Remember the workspace; at most one generation runs at a time.
     def __init__(self, workspace: Path, checkout: Path):
         self.workspace, self.checkout = Path(workspace), Path(checkout)
         self._lock = threading.Lock()
@@ -46,6 +47,10 @@ class GenerationRuns:
         if not RUN_ID.fullmatch(run_id) or folder.is_symlink() or not folder.is_dir():
             raise KeyError("Unknown generation run")
         return folder
+
+    # The ID of the run in progress, if any (cleanup never touches it).
+    def active_run(self) -> str | None:
+        return self._active[0] if self._running() else None
 
     # True while a run's process is still alive.
     def _running(self) -> bool:

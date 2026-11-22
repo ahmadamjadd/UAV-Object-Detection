@@ -11,7 +11,9 @@ from foxtrot.config.job import JobSpec
 from foxtrot.persistence.jobs import create_configured_job
 
 
+# Job settings are saved unchanged with their hashes.
 class JobConfigurationPersistenceTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         self.fixture = tempfile.TemporaryDirectory(
             prefix="foxtrot-job-configs-"
@@ -24,6 +26,7 @@ class JobConfigurationPersistenceTests(unittest.TestCase):
 
         self.workspace = self.root / "workspace"
 
+    # A minimal valid job request.
     def request(self):
         return {
             "dataset_id": "dataset-demo",

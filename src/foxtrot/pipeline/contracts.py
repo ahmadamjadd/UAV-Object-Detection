@@ -17,12 +17,14 @@ from foxtrot.config.evaluation import EvaluationResult
 from foxtrot.config.job import JobSpec
 
 
+# Base for pipeline inputs and results: strict, unchangeable, finite numbers.
 class Contract(BaseModel):
     model_config = ConfigDict(
         extra="forbid", strict=True, frozen=True, validate_default=True, allow_inf_nan=False,
     )
 
 
+# Paths given to the pipeline must be absolute.
 def _absolute(value: str) -> str:
     if not value or "\x00" in value or not Path(value).is_absolute():
         raise ValueError("Pipeline paths must be absolute")
@@ -39,6 +41,7 @@ class DatasetInput(Contract):
     metadata: DatasetMetadata
     root: str
 
+    # The dataset folder must be absolute.
     @field_validator("root")
     @classmethod
     def check_root_absolute(cls, value: str) -> str:
@@ -61,12 +64,14 @@ class GenerationInput(Contract):
     seed: int = Field(ge=0, le=4_294_967_295)
     output_directory: str
 
+    # The output folder must be absolute.
     @field_validator("output_directory")
     @classmethod
     def check_output_absolute(cls, value: str) -> str:
         return _absolute(value)
 
 
+# A finished dataset and its image count.
 class DatasetManifest(Contract):
     metadata: DatasetMetadata
     image_count: int = Field(ge=0)
@@ -74,11 +79,13 @@ class DatasetManifest(Contract):
 
 # ----------------------------------------------------------------- splitting
 
+# How to divide a dataset into training and validation parts.
 class SplitPolicy(Contract):
     train_ratio: float = Field(gt=0, lt=1)
     validation_ratio: float = Field(gt=0, lt=1)
     seed: int = Field(default=42, ge=0, le=4_294_967_295)
 
+    # Training and validation shares must add up to 1.
     @model_validator(mode="after")
     def ratios_sum_to_one(self) -> Self:
         if abs(self.train_ratio + self.validation_ratio - 1.0) > 1e-9:
@@ -86,17 +93,20 @@ class SplitPolicy(Contract):
         return self
 
 
+# A dataset to divide, the rules and where to write.
 class SplitInput(Contract):
     dataset: DatasetInput
     policy: SplitPolicy
     output_directory: str
 
+    # The output folder must be absolute.
     @field_validator("output_directory")
     @classmethod
     def check_output_absolute(cls, value: str) -> str:
         return _absolute(value)
 
 
+# The result of a split: counts per part.
 class SplitManifest(Contract):
     dataset: DatasetMetadata
     policy: SplitPolicy
@@ -117,6 +127,7 @@ class TrainingInput(Contract):
     job_directory: str
     output_directory: str
 
+    # The job paths must be absolute.
     @field_validator("data_yaml", "job_directory", "output_directory")
     @classmethod
     def check_paths_absolute(cls, value: str) -> str:
@@ -131,9 +142,10 @@ class TrainingResult(Contract):
     metrics: dict[str, float] = Field(default_factory=dict)
     fixture: bool = False
     # V3: how the model started and the exact starting weights (None: random weights or fixture).
-    initialization: Literal["pretrained", "scratch", "checkpoint"] | None = None
+    initialization: Literal["pretrained", "scratch", "checkpoint", "resume"] | None = None
     start_weights_sha256: str | None = Field(default=None, pattern=SHA256)
 
+    # Training metrics must be real numbers.
     @field_validator("metrics")
     @classmethod
     def finite_metrics(cls, value: dict[str, float]) -> dict[str, float]:
@@ -142,13 +154,16 @@ class TrainingResult(Contract):
         return value
 
 
+# What the evaluator needs: the exact checkpoint, data and device.
 class EvaluationInput(Contract):
     job_id: str = Field(pattern=JOB_ID)
     checkpoint: CheckpointReference
     job_directory: str
     dataset: DatasetInput
     plots: bool = False  # V4: evaluation jobs also save confusion-matrix and PR-curve images
+    device: str = Field(default="cpu", pattern=r"^(cpu|cuda:[0-9]{1,2})$")  # where scoring runs
 
+    # The job folder must be absolute.
     @field_validator("job_directory")
     @classmethod
     def check_directory_absolute(cls, value: str) -> str:
@@ -166,6 +181,7 @@ class PipelineResult(Contract):
     # V4: plot images under output/evaluation/ (relative to the job), re-checked by the parent.
     plots: tuple[str, ...] = ()
 
+    # The evaluation must score exactly the checkpoint training selected.
     @model_validator(mode="after")
     def evaluation_scores_selected_checkpoint(self) -> Self:
         if self.evaluation.checkpoint != self.training.checkpoint:
@@ -182,15 +198,19 @@ class PipelineCancelled(Exception):
 class PipelineFailure(Exception):
     """A safe, displayable adapter failure. Never include credentials."""
 
+    # A failure with a short code and a readable message.
     def __init__(self, code: str, message: str):
         super().__init__(message)
         self.code = code
         self.message = message
 
 
+# How pipeline steps report progress, output and check for cancellation.
 class ProgressReporter(Protocol):
+    # Report progress (e.g. one epoch finished).
     def progress(self, payload: dict) -> None: ...
 
+    # Report a line of output.
     def log(self, payload: dict) -> None: ...
 
     def wait_cancelled(self, seconds: float = 0.0) -> bool:
@@ -200,17 +220,25 @@ class ProgressReporter(Protocol):
 
 # ----------------------------------------------------------------- adapters
 
+# Anything that can generate a dataset.
 class DatasetGenerator(Protocol):
+    # Produce a dataset from the request.
     def generate(self, request: GenerationInput, reporter: ProgressReporter) -> DatasetManifest: ...
 
 
+# Anything that can split a dataset.
 class DatasetSplitter(Protocol):
+    # Split the dataset from the request.
     def split(self, request: SplitInput, reporter: ProgressReporter) -> SplitManifest: ...
 
 
+# Anything that can train a model.
 class Trainer(Protocol):
+    # Train and return the selected checkpoint and metrics.
     def train(self, request: TrainingInput, reporter: ProgressReporter) -> TrainingResult: ...
 
 
+# Anything that can evaluate a checkpoint.
 class Evaluator(Protocol):
+    # Score a checkpoint and return the metrics.
     def evaluate(self, request: EvaluationInput, reporter: ProgressReporter) -> EvaluationResult: ...

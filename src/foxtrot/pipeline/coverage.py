@@ -40,7 +40,6 @@ _UNSUPPORTED = {
     "save_period": "Only the best checkpoint is kept and uploaded",
     "single_cls": "Classes come from the dataset's validated mapping",
     "rect": "Rectangular batches disable mosaic and change the evaluation; not verified",
-    "amp": "Mixed precision applies to GPU only; GPU is not verified yet",
     "profile": "Developer profiling output; not useful in the website",
     "multi_scale": "Changes image size during training; not verified on CPU",
     "compile": "torch.compile is not verified on the supported CPU setup",
@@ -49,7 +48,7 @@ _UNSUPPORTED = {
     "conf": "Evaluation thresholds stay fixed so runs are comparable",
     "iou": "Evaluation thresholds stay fixed so runs are comparable",
     "max_det": "Evaluation thresholds stay fixed so runs are comparable",
-    "half": "Half precision applies to GPU only; GPU is not verified yet",
+    "half": "Prediction/export option; training precision is set by 'amp'",
     "save_json": "COCO JSON output is not used",
 }
 

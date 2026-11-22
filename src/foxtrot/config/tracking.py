@@ -6,6 +6,7 @@ from typing import Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_validator, model_validator
 
 
+# Base for tracking records: strict, unchangeable, no unknown fields.
 class _Contract(BaseModel):
     model_config = ConfigDict(
         extra="forbid", strict=True, frozen=True, validate_default=True, allow_inf_nan=False,
@@ -19,6 +20,7 @@ class MetricPoint(_Contract):
     value: float
     step: int = Field(ge=0)
 
+    # Metric values must be real numbers (no NaN or infinity).
     @field_validator("value")
     @classmethod
     def finite(cls, value: float) -> float:
@@ -43,6 +45,7 @@ class TrackingOperation(_Contract):
     operation: Literal["create_run", "log_params", "log_metrics", "log_artifact", "set_terminated"]
     payload: dict[str, JsonValue]
 
+    # Each upload operation must carry exactly the data it needs.
     @model_validator(mode="after")
     def check_payload(self) -> Self:
         payload = self.payload

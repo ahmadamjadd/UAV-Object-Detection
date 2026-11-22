@@ -87,9 +87,11 @@ def generation_identity(request: GenerationRequest, backgrounds: list[Path]) -> 
 
 # Hold an exclusive lock for one dataset ID, so two runs never build the same dataset at once.
 class _DatasetLock:
+    # Lock file for one dataset identity.
     def __init__(self, path: Path):
         self.path = path
 
+    # Take the lock (waits while another process holds it).
     def __enter__(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.stream = self.path.open("a")
@@ -100,6 +102,7 @@ class _DatasetLock:
             raise PipelineFailure("dataset_busy", "Another run is already building this exact dataset") from None
         return self
 
+    # Release the lock.
     def __exit__(self, *_):
         self.stream.close()  # closing releases the lock
 

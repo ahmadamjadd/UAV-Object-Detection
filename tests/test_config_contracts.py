@@ -18,7 +18,9 @@ from foxtrot.config.result import JobResult
 from foxtrot.config.snapshot import resolve_job
 
 
+# Job request and result contracts accept good values and refuse bad ones.
 class ConfigurationContractTests(unittest.TestCase):
+    # A minimal valid job request.
     def request(self):
         return {
             "dataset_id": "dataset-demo",

@@ -11,6 +11,7 @@ from foxtrot.config.lifecycle import (
 )
 
 
+# Only the declared job and upload state changes are allowed.
 class LifecycleRuleTests(unittest.TestCase):
     def test_execution_table_accepts_exactly_the_declared_edges(self):
         for current in E:

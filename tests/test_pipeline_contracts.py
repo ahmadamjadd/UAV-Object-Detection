@@ -24,17 +24,22 @@ from foxtrot.pipeline.registry import PipelineSettings, get_adapters
 from foxtrot.pipeline.yolo_dataset import write_yolo_data_yaml
 
 
+# Test reporter that keeps every event and can simulate cancellation.
 class Reporter:
+    # Start with no events and no cancellation.
     def __init__(self):
         self.events = []
         self.cancelled = threading.Event()
 
+    # Keep a progress event.
     def progress(self, payload):
         self.events.append(("progress", payload))
 
+    # Keep an output line.
     def log(self, payload):
         self.events.append(("log", payload))
 
+    # True once cancellation was simulated.
     def wait_cancelled(self, seconds=0.0):
         return self.cancelled.wait(seconds) if seconds else self.cancelled.is_set()
 
@@ -53,7 +58,9 @@ def make_dataset(workspace: Path, checkout: Path, dataset_id="shapes", classes=(
                             train_images_ref="train/images", validation_images_ref="val/images")
 
 
+# Pipeline inputs/results and the fake trainer and evaluator.
 class PipelineContractTests(unittest.TestCase):
+    # Before each test: a fresh temporary workspace.
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix="foxtrot-h6-pipeline-")
         self.addCleanup(temporary.cleanup)
@@ -114,6 +121,7 @@ class PipelineContractTests(unittest.TestCase):
             write_yolo_data_yaml(dataset, path)
         self.assertFalse((self.checkout / "data.yaml").exists())
 
+    # A training input for a job folder in the temporary workspace.
     def _training_input(self, dataset, epochs=3):
         job = self.root / "job"
         output = job / "output"

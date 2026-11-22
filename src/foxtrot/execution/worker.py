@@ -22,6 +22,7 @@ from .supervisor import Supervisor, SupervisorLimits
 class Worker:
     """Run outside the API process; only trusted code selects the runner/settings."""
 
+    # Lock the workspace for this worker and prepare the supervisor.
     def __init__(self, workspace_root: str | Path, source_checkout: str | Path, *,
                  fixture: FixtureSettings | None = None, pipeline: PipelineSettings | None = None,
                  stop: threading.Event | None = None,
@@ -71,6 +72,7 @@ class Worker:
         return processed
 
 
+# The worker command: claim queued jobs one at a time until stopped.
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workspace", required=True, type=Path)

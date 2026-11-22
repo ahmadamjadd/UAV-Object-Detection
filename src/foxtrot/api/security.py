@@ -21,10 +21,12 @@ SESSION_HEADER = "x-foxtrot-session"
 UNSAFE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 
 
+# A new random token for this launch; requests that change things must send it.
 def new_session_token() -> str:
     return secrets.token_urlsafe(32)
 
 
+# The page addresses allowed to call the API (this computer only).
 def allowed_origins(port: int) -> set[str]:
     return {f"http://{host}:{port}" for host in LOOPBACK_HOSTS}
 
